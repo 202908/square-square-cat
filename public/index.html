@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>貓貓方塊疊疊樂遊戲</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <section id="startScreen" class="screen screen-start">
+        <div class="title-block">
+          <p class="kicker">Cat Eye Nebula</p>
+          <h1>貓貓方塊疊疊樂遊戲</h1>
+          <p>方塊貓抵達新星球，開始疊疊樂、聊天、逛商城和一起闖關。</p>
+        </div>
+        <button id="startButton" class="primary-button">開始</button>
+      </section>
+
+      <section id="authScreen" class="screen auth-screen hidden">
+        <button class="back-button" data-screen="start">返回</button>
+        <h2>登入與創建帳號</h2>
+        <div id="authChoices" class="choice-stack">
+          <button data-auth-mode="create">創建新帳號</button>
+          <button data-auth-mode="login">直接登入已有的帳號</button>
+          <button id="guestButton">訪客身份登入</button>
+        </div>
+        <form id="authForm" class="panel hidden">
+          <label id="authLabel" for="accountCode">輸入帳號亂碼</label>
+          <input id="accountCode" autocomplete="off" maxlength="16" placeholder="例如 123 或 cat77" />
+          <p id="authHint">新帳號請用 1 到 10 個英文字或數字。</p>
+          <div class="row">
+            <button id="authSubmitButton" type="submit" class="primary-button" disabled>下一步</button>
+            <button type="button" id="cancelAuth">取消</button>
+          </div>
+        </form>
+        <div id="authError" class="panel error-panel hidden"></div>
+      </section>
+
+      <section id="gameScreen" class="game-screen hidden">
+        <canvas id="gameCanvas"></canvas>
+
+        <header class="hud top-hud">
+          <div>
+            <strong id="accountName">尚未登入</strong>
+            <span id="levelText">Lv. 1</span>
+          </div>
+          <span id="coinAmount" class="coin-pill">金幣 0</span>
+          <button id="coinCodeButton">金幣代碼</button>
+          <button id="friendsButton">好友</button>
+          <button id="challengeButton">闖關/組隊</button>
+          <button id="inviteFlyButton" class="hidden">邀請飛</button>
+          <button id="bagButton">背包</button>
+          <button id="shopButton">商城</button>
+          <button id="adminButton" class="hidden">新增 Password</button>
+        </header>
+
+        <aside id="chatPanel" class="chat-panel">
+          <div id="chatLog" class="chat-log"></div>
+          <form id="chatForm" class="chat-form">
+            <input id="chatInput" maxlength="120" placeholder="傳訊息" />
+            <button type="button" id="voiceButton" aria-label="語音輸入">🎙</button>
+            <button type="submit">送出</button>
+          </form>
+        </aside>
+
+        <div class="mobile-controls" aria-hidden="false">
+          <div id="joystick" class="joystick">
+            <div id="joystickKnob" class="joystick-knob"></div>
+          </div>
+          <div class="action-pad">
+            <button id="stackButton" class="hidden">疊疊樂</button>
+            <button id="attackButton" class="hidden">攻擊</button>
+            <button id="enterHouseButton" class="hidden">進入</button>
+            <button id="clearHouseActionButton" class="hidden">清空房子</button>
+            <button id="swingButton" class="hidden">上鞦韆</button>
+            <button id="flyUpButton" class="hidden">上</button>
+            <button id="flyDownButton" class="hidden">下</button>
+            <button id="jumpButton" class="jump-button">跳</button>
+          </div>
+        </div>
+
+        <div id="modal" class="modal hidden">
+          <div class="modal-panel">
+            <button id="closeModal" class="close-button" aria-label="關閉">×</button>
+            <h2 id="modalTitle"></h2>
+            <div id="modalBody"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <script type="module" src="/game.js"></script>
+  </body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "name": "square-square-cat",
+  "version": "0.1.0",
+  "description": "貓貓方塊疊疊樂多人連線網頁遊戲",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/*.test.js",
+    "check": "node --check server.js && node --check public/game.js && node --check src/gameRules.js"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}
