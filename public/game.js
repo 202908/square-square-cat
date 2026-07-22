@@ -7,6 +7,8 @@ const state = {
   shopItems: [],
   levelRewards: [],
   coinCodes: {},
+  titleCatalog: {},
+  titleColors: {},
   players: new Map(),
   meshes: new Map(),
   coinMeshes: new Map(),
@@ -438,6 +440,8 @@ function updateAccount(message) {
   state.shopItems = message.shopItems || state.shopItems;
   state.levelRewards = message.levelRewards || state.levelRewards;
   state.coinCodes = message.coinCodes || state.coinCodes;
+  state.titleCatalog = message.titleCatalog || state.titleCatalog;
+  state.titleColors = message.titleColors || state.titleColors;
   els.accountName.textContent = state.account.code;
   els.levelText.textContent = state.account.isHost ? "主機" : `Lv. ${state.account.level}`;
   els.coinAmount.textContent = state.account.isHost ? "金幣 ∞" : `金幣 ${state.account.coins}`;
@@ -1661,18 +1665,36 @@ function updateCatMesh(mesh, player) {
   updateTrail(mesh, player);
   updateHitFlash(mesh, player);
   const displayName = player.displayName || player.accountCode;
-  if (mesh.userData.lastName !== displayName) {
+  const title = player.title || {};
+  const labelKey = `${title.id || ""}:${title.name || ""}:${title.color || ""}:${displayName}`;
+  if (mesh.userData.lastName !== labelKey) {
     const ctx = mesh.userData.label.getContext("2d");
     ctx.clearRect(0, 0, 256, 64);
     ctx.fillStyle = "rgba(5, 10, 14, 0.7)";
-    ctx.fillRect(0, 8, 256, 42);
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "700 24px sans-serif";
+    ctx.fillRect(0, 4, 256, 56);
+    ctx.fillStyle = titleCanvasFill(title.color || "black", ctx, 256);
+    ctx.font = "800 20px sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText(displayName, 128, 38);
+    ctx.fillText(title.name || "新手貓貓", 128, 27);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "700 18px sans-serif";
+    ctx.fillText(displayName, 128, 51);
     mesh.userData.texture.needsUpdate = true;
-    mesh.userData.lastName = displayName;
+    mesh.userData.lastName = labelKey;
   }
+}
+
+function titleCanvasFill(colorId, ctx, width) {
+  const value = state.titleColors?.[colorId] || colorId || "#111111";
+  if (value === "rainbow" || value === "aurora") {
+    const gradient = ctx.createLinearGradient(0, 0, width, 0);
+    const colors = value === "aurora"
+      ? ["#62b7ff", "#8fffd2", "#ff8fcb", "#b78cff"]
+      : ["#ff4f5f", "#ff9b3d", "#ffd95a", "#67d88a", "#62b7ff", "#5b6dff", "#b78cff"];
+    colors.forEach((color, index) => gradient.addColorStop(index / (colors.length - 1), color));
+    return gradient;
+  }
+  return value;
 }
 
 function updateHitFlash(mesh, player) {
@@ -2148,7 +2170,8 @@ function priceText(item) {
 
 function showBagModal() {
   const owned = state.shopItems.filter((item) => state.account.inventory.includes(item.id));
-  openModal("背包", owned.length ? `<div class="list">${owned.map((item) => `
+  const ownedTitles = (state.account.titles || []).map((id) => state.titleCatalog[id]).filter(Boolean);
+  const itemHtml = owned.length ? `<div class="list">${owned.map((item) => `
     <div class="list-item">
       <div class="split">
         <strong>${item.name}</strong>
@@ -2156,9 +2179,25 @@ function showBagModal() {
       </div>
       ${bagActionButton(item)}
     </div>
-  `).join("")}</div>` : "<p>背包現在是空的。</p>");
+  `).join("")}</div>` : "<p>背包現在沒有商品道具。</p>";
+  const titleHtml = `
+    <h3>稱號</h3>
+    <div class="list">${ownedTitles.map((title) => `
+      <div class="list-item">
+        <div class="split">
+          <strong style="color:${cssTitleColor(title.color)}">${escapeHtml(title.name)}</strong>
+          <span>${state.account.equipped?.title === title.id ? "裝備中" : "稱號"}</span>
+        </div>
+        <button data-equip-title="${escapeHtml(title.id)}">${state.account.equipped?.title === title.id ? "已裝備" : "裝備稱號"}</button>
+      </div>
+    `).join("")}</div>
+  `;
+  openModal("背包", `${titleHtml}${itemHtml}`);
   document.querySelectorAll("[data-equip]").forEach((button) => {
     button.addEventListener("click", () => send("equip", { itemId: button.dataset.equip }));
+  });
+  document.querySelectorAll("[data-equip-title]").forEach((button) => {
+    button.addEventListener("click", () => send("equipTitle", { titleId: button.dataset.equipTitle }));
   });
   document.querySelectorAll("[data-place-house]").forEach((button) => {
     button.addEventListener("click", () => send("placeHouse"));
@@ -2169,6 +2208,11 @@ function showBagModal() {
   document.querySelectorAll("[data-use-house-paint]").forEach((button) => {
     button.addEventListener("click", () => send("useHousePaint", { itemId: button.dataset.useHousePaint }));
   });
+}
+
+function cssTitleColor(colorId) {
+  const value = state.titleColors?.[colorId] || colorId || "#111111";
+  return value === "rainbow" || value === "aurora" ? "#62b7ff" : value;
 }
 
 function bagActionButton(item) {
@@ -2351,6 +2395,7 @@ function locationLabel(location) {
 }
 
 function showAdminModal() {
+  const colorOptions = Object.entries(state.titleColors || {}).map(([id, value]) => `<option value="${id}">${titleColorName(id, value)}</option>`).join("");
   const codeRows = Object.entries(state.coinCodes).map(([code, entry]) => `
     <div class="list-item">
       <div class="split">
@@ -2364,7 +2409,14 @@ function showAdminModal() {
     </div>
   `).join("") || `<p class="muted-line">目前還沒有新增過 Password。</p>`;
   openModal("新增 Password", `
+    <form id="adminTitleForm" class="list">
+      <strong>新增稱號</strong>
+      <input id="adminTitleNameInput" maxlength="14" placeholder="稱號名稱，例如 超級喵喵" />
+      <select id="adminTitleColorInput">${colorOptions}</select>
+      <button class="primary-button" type="submit">新增稱號</button>
+    </form>
     <form id="adminCodeForm" class="list">
+      <strong>新增金幣/道具 Password</strong>
       <input id="adminCodeInput" placeholder="新代碼" />
       <select id="adminRewardType">
         <option value="coins">金幣</option>
@@ -2378,6 +2430,13 @@ function showAdminModal() {
     </form>
     <div class="list">${codeRows}</div>
   `);
+  document.querySelector("#adminTitleForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    send("adminUpsertTitle", {
+      name: document.querySelector("#adminTitleNameInput").value,
+      color: document.querySelector("#adminTitleColorInput").value
+    });
+  });
   document.querySelector("#adminCodeForm").addEventListener("submit", (event) => {
     event.preventDefault();
     send("adminUpsertCode", {
@@ -2397,6 +2456,30 @@ function showAdminModal() {
       }
     });
   });
+}
+
+function titleColorName(id, value) {
+  return {
+    black: "黑色",
+    white: "白色",
+    red: "紅色",
+    orange: "橙色",
+    yellow: "黃色",
+    green: "綠色",
+    blue: "藍色",
+    indigo: "靛色",
+    purple: "紫色",
+    pink: "粉色",
+    magenta: "桃紅色",
+    lightBlue: "淺藍",
+    deepBlue: "深藍",
+    starryBlue: "星夜藍",
+    aurora: "極光色",
+    rainbow: "彩虹色",
+    peach: "蜜桃色",
+    mint: "薄荷色",
+    gold: "金色"
+  }[id] || value || id;
 }
 
 function openModal(title, body) {

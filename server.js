@@ -7,10 +7,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   DEFAULT_COIN_CODES,
+  DEFAULT_TITLE_ID,
+  DEFAULT_TITLES,
   HOST_CODE,
   HOST_PASSWORD,
   LEVEL_REWARDS,
   SHOP_ITEMS,
+  TITLE_COLORS,
   addFriend,
   applyHousePaint,
   buyItem,
@@ -39,6 +42,7 @@ const publicDir = path.join(__dirname, "public");
 const dataDir = path.join(__dirname, "data");
 const accountsFile = path.join(dataDir, "accounts.json");
 const codesFile = path.join(dataDir, "coinCodes.json");
+const titlesFile = path.join(dataDir, "titles.json");
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.RENDER ? "0.0.0.0" : "127.0.0.1";
 const TICK_RATE = 30;
@@ -60,13 +64,9 @@ const SOLID_FLOORS = [
     z: -20,
     w: 2.4,
     d: 4.2
-  })),
-  { x: 8, y: 8.4, z: 22, w: 12, d: 12 },
-  { x: 28, y: 8.4, z: -12, w: 12, d: 12 }
+  }))
 ];
 const SOLID_BLOCKS = [
-  { x: 8, z: 22, w: 12, d: 12 },
-  { x: 28, z: -12, w: 12, d: 12 },
   { x: -28, z: -20, w: 7, d: 6 }
 ];
 const SWING = { x: 12, y: 2.2, z: -28, angle: 0, velocity: 0, riders: [] };
@@ -87,6 +87,7 @@ const sockets = new Map();
 const teams = new Map();
 let accounts = {};
 let coinCodes = structuredClone(DEFAULT_COIN_CODES);
+let titleCatalog = structuredClone(DEFAULT_TITLES);
 let chatLog = [];
 let worldCoins = makeWorldCoins(80);
 let survivalPickups = makeSurvivalPickups();
@@ -152,6 +153,22 @@ async function loadData() {
       account.equipped ||= { hat: null, clothes: null, tail: null, trail: null };
       account.equipped.trail ??= null;
       account.equipped.pet ??= null;
+      if (!account.equipped.title) {
+        account.equipped.title = DEFAULT_TITLE_ID;
+        changedAccounts = true;
+      }
+      if (!Array.isArray(account.titles)) {
+        account.titles = [DEFAULT_TITLE_ID];
+        changedAccounts = true;
+      }
+      if (!account.titles.includes(DEFAULT_TITLE_ID)) {
+        account.titles.unshift(DEFAULT_TITLE_ID);
+        changedAccounts = true;
+      }
+      if (!account.titles.includes(account.equipped.title)) {
+        account.equipped.title = DEFAULT_TITLE_ID;
+        changedAccounts = true;
+      }
       account.house ??= null;
       account.roomItems ??= [];
       account.giftInbox ??= [];
@@ -175,6 +192,9 @@ async function loadData() {
   if (existsSync(codesFile)) {
     coinCodes = { ...coinCodes, ...JSON.parse(await readFile(codesFile, "utf8")) };
   }
+  if (existsSync(titlesFile)) {
+    titleCatalog = { ...DEFAULT_TITLES, ...JSON.parse(await readFile(titlesFile, "utf8")) };
+  }
   if (HOST_CODE && !accounts[HOST_CODE]) {
     accounts[HOST_CODE] = createAccount(HOST_CODE);
     await saveAccounts();
@@ -189,6 +209,10 @@ async function saveAccounts() {
 
 async function saveCodes() {
   await writeFile(codesFile, JSON.stringify(coinCodes, null, 2));
+}
+
+async function saveTitles() {
+  await writeFile(titlesFile, JSON.stringify(titleCatalog, null, 2));
 }
 
 function serveStaticFile(request, response) {
@@ -272,6 +296,9 @@ function handleMessage(socket, message) {
       break;
     case "equip":
       updateAccount(socket, session, equipItem(session.account, message.itemId));
+      break;
+    case "equipTitle":
+      handleEquipTitle(socket, session, message.titleId);
       break;
     case "placeHouse":
       handlePlaceHouse(socket, session);
@@ -371,6 +398,9 @@ function handleMessage(socket, message) {
       break;
     case "adminDeleteCode":
       handleAdminDeleteCode(socket, session, message.code);
+      break;
+    case "adminUpsertTitle":
+      handleAdminUpsertTitle(socket, session, message);
       break;
     default:
       send(socket, "notice", { message: "未知指令。" });
@@ -509,6 +539,7 @@ function tickWorld() {
       survivalMode: session.account.survivalMode,
       hunger: session.account.hunger,
       thirst: session.account.thirst,
+      title: titleCatalog[session.account.equipped?.title] || DEFAULT_TITLES[DEFAULT_TITLE_ID],
       catVariant: session.account.catVariant,
       equipped: session.account.equipped,
       roomItems: session.player.location === "room" ? session.account.roomItems : [],
@@ -1617,6 +1648,8 @@ function sendAccount(socket, account) {
     account,
     shopItems: SHOP_ITEMS,
     levelRewards: LEVEL_REWARDS,
+    titleCatalog,
+    titleColors: TITLE_COLORS,
     coinCodes: account.isHost ? coinCodes : undefined
   });
 }
@@ -1676,6 +1709,51 @@ function handleAdminDeleteCode(socket, session, rawCode) {
   saveCodes();
   send(socket, "account", { account: session.account, shopItems: SHOP_ITEMS, coinCodes });
   send(socket, "notice", { message: "代碼已刪除。" });
+}
+
+function handleEquipTitle(socket, session, rawTitleId) {
+  const titleId = String(rawTitleId || "").trim();
+  if (!titleCatalog[titleId]) {
+    send(socket, "notice", { message: "找不到這個稱號。" });
+    return;
+  }
+  session.account.titles ||= [DEFAULT_TITLE_ID];
+  if (!session.account.titles.includes(titleId)) {
+    send(socket, "notice", { message: "你還沒有這個稱號。" });
+    return;
+  }
+  session.account.equipped ||= {};
+  session.account.equipped.title = titleId;
+  persistSessionAccount(session);
+  sendAccount(socket, session.account);
+  send(socket, "notice", { message: `已裝備稱號「${titleCatalog[titleId].name}」。` });
+}
+
+function handleAdminUpsertTitle(socket, session, message) {
+  if (!session.account.isHost) {
+    send(socket, "notice", { message: "只有主機帳號可以新增稱號。" });
+    return;
+  }
+  const name = String(message.name || "").trim().slice(0, 14);
+  const color = TITLE_COLORS[String(message.color || "")] ? String(message.color) : "black";
+  if (!name) {
+    send(socket, "notice", { message: "請輸入稱號名稱。" });
+    return;
+  }
+  const id = `title-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || Date.now()}`;
+  titleCatalog[id] = { id, name, color };
+  for (const account of Object.values(accounts)) {
+    account.titles ||= [DEFAULT_TITLE_ID];
+    if (!account.titles.includes(id)) account.titles.push(id);
+  }
+  for (const onlineSession of sessions.values()) {
+    onlineSession.account.titles ||= [DEFAULT_TITLE_ID];
+    if (!onlineSession.account.titles.includes(id)) onlineSession.account.titles.push(id);
+    sendAccount(onlineSession.socket, onlineSession.account);
+  }
+  saveTitles();
+  saveAccounts();
+  send(socket, "notice", { message: `已新增稱號「${name}」。` });
 }
 
 function addChat(sender, rawText) {

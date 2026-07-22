@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   CAT_VARIANTS,
+  DEFAULT_TITLE_ID,
+  DEFAULT_TITLES,
   LEVEL_REWARDS,
   MAX_CHALLENGE_STEP_Y,
   MAX_PLAYER_LEVEL,
@@ -52,6 +54,9 @@ test("player account gets one allowed cat skin at creation", () => {
   assert.equal(CAT_VARIANTS.includes(account.catVariant), true);
   assert.equal(account.diamonds, 0);
   assert.deepEqual(account.giftInbox, []);
+  assert.equal(account.equipped.title, DEFAULT_TITLE_ID);
+  assert.equal(account.titles.includes(DEFAULT_TITLE_ID), true);
+  assert.deepEqual(DEFAULT_TITLES[DEFAULT_TITLE_ID], { id: DEFAULT_TITLE_ID, name: "新手貓貓", color: "black" });
 });
 
 test("shop has at least fifty furniture items", () => {

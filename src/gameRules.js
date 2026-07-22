@@ -11,6 +11,31 @@ export const MAX_PLAYER_LEVEL = 100;
 export const MAX_CHALLENGE_STEP_Y = 2.8;
 export const CHALLENGE_BASE = { x: -760, y: 1.2, z: -720 };
 export const SURVIVAL_DRAIN_PER_SECOND = { hunger: 0.18, thirst: 0.24 };
+export const DEFAULT_TITLE_ID = "rookie-cat";
+export const DEFAULT_TITLES = {
+  [DEFAULT_TITLE_ID]: { id: DEFAULT_TITLE_ID, name: "新手貓貓", color: "black" }
+};
+export const TITLE_COLORS = {
+  black: "#111111",
+  white: "#ffffff",
+  red: "#ff4f5f",
+  orange: "#ff9b3d",
+  yellow: "#ffd95a",
+  green: "#67d88a",
+  blue: "#62b7ff",
+  indigo: "#5b6dff",
+  purple: "#b78cff",
+  pink: "#ff8fcb",
+  magenta: "#ff3fb4",
+  lightBlue: "#9ee7ff",
+  deepBlue: "#173d8f",
+  starryBlue: "#11295f",
+  aurora: "aurora",
+  rainbow: "rainbow",
+  peach: "#ffb58a",
+  mint: "#8fffd2",
+  gold: "#ffd166"
+};
 
 export const EXTRA_NON_FURNITURE_ITEMS = [
   ["sun-hat", "太陽帽", "hat", "wearable", 140],
@@ -287,8 +312,10 @@ export function createAccount(code, overrides = {}) {
       clothes: null,
       tail: null,
       trail: null,
-      pet: null
+      pet: null,
+      title: DEFAULT_TITLE_ID
     },
+    titles: [DEFAULT_TITLE_ID],
     house: null,
     roomItems: [],
     giftInbox: [],
