@@ -103,14 +103,6 @@ let ferrisIconGroup;
 let challengeStageGroup;
 let renderedChallengeLevel = null;
 
-const CHALLENGE_PLATFORMS = [
-  { x: -52, y: 1.2, z: 36, w: 12, d: 8, color: 0xffc5dc },
-  { x: -42, y: 4.2, z: 30, w: 9, d: 7, color: 0xbfe8ff },
-  { x: -32, y: 7.4, z: 36, w: 8, d: 7, color: 0xd9c7ff },
-  { x: -22, y: 10.6, z: 28, w: 8, d: 7, color: 0xffc5dc },
-  { x: -12, y: 13.8, z: 34, w: 8, d: 7, color: 0xbfe8ff },
-  { x: -2, y: 17, z: 27, w: 9, d: 7, color: 0xd9c7ff }
-];
 const CHALLENGE_BASE = { x: -760, y: 1.2, z: -720 };
 const MAX_PLAYER_LEVEL = 100;
 const MAX_CHALLENGE_STEP_Y = 2.8;
@@ -460,14 +452,6 @@ function createIsland() {
     scene.add(top);
   });
 
-  const rim = new THREE.Mesh(
-    new THREE.TorusGeometry(88, 3, 10, 96),
-    new THREE.MeshStandardMaterial({ color: 0xf4e9ff, roughness: 0.8 })
-  );
-  rim.rotation.x = Math.PI / 2;
-  rim.position.y = 0.2;
-  scene.add(rim);
-
   const river = new THREE.Mesh(
     new THREE.BoxGeometry(184, 0.16, 8),
     new THREE.MeshStandardMaterial({ color: 0x62b7ff, roughness: 0.28, transparent: true, opacity: 0.72 })
@@ -480,15 +464,6 @@ function createPlayground() {
   addSlide(-24, 0, -20);
   addSwing(12, 0, -28);
   addFerrisWheel(-38, 0, -52);
-  addChallengeCourse();
-  for (let i = 0; i < 18; i += 1) {
-    const post = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.7, 0.7, 5 + Math.random() * 8, 12),
-      new THREE.MeshStandardMaterial({ color: 0x6a4b34 })
-    );
-    post.position.set(Math.random() * 120 - 60, 2, Math.random() * 120 - 60);
-    scene.add(post);
-  }
 }
 
 function addFerrisWheel(x, y, z) {
@@ -610,23 +585,6 @@ function addSwing(x, y, z) {
 
   group.position.set(x, y, z);
   scene.add(group);
-}
-
-function addChallengeCourse() {
-  for (const platform of CHALLENGE_PLATFORMS) {
-    const mesh = new THREE.Mesh(
-      new THREE.BoxGeometry(platform.w, 0.8, platform.d),
-      new THREE.MeshStandardMaterial({ color: platform.color, roughness: 0.64 })
-    );
-    mesh.position.set(platform.x, platform.y, platform.z);
-    scene.add(mesh);
-  }
-  const sign = new THREE.Mesh(
-    new THREE.BoxGeometry(10, 5, 1),
-    new THREE.MeshStandardMaterial({ color: 0x6b4f8f, roughness: 0.55 })
-  );
-  sign.position.set(-58, 3.2, 28);
-  scene.add(sign);
 }
 
 function createRoom() {
