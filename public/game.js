@@ -43,6 +43,7 @@ const els = {
   inviteFlyButton: document.querySelector("#inviteFlyButton"),
   bagButton: document.querySelector("#bagButton"),
   shopButton: document.querySelector("#shopButton"),
+  onlinePlayersButton: document.querySelector("#onlinePlayersButton"),
   adminButton: document.querySelector("#adminButton"),
   chatLog: document.querySelector("#chatLog"),
   chatForm: document.querySelector("#chatForm"),
@@ -190,6 +191,7 @@ function bindUi() {
   els.friendsButton.addEventListener("click", showFriendsModal);
   els.challengeButton.addEventListener("click", showChallengeModal);
   els.inviteFlyButton.addEventListener("click", () => send("flightInvite"));
+  els.onlinePlayersButton.addEventListener("click", showOnlinePlayersModal);
   els.adminButton.addEventListener("click", showAdminModal);
   els.closeModal.addEventListener("click", closeModal);
 }
@@ -287,6 +289,7 @@ function updateAccount(message) {
   els.accountName.textContent = state.account.code;
   els.levelText.textContent = state.account.isHost ? "主機" : `Lv. ${state.account.level}`;
   els.coinAmount.textContent = state.account.isHost ? "金幣 ∞" : `金幣 ${state.account.coins}`;
+  els.onlinePlayersButton.classList.toggle("hidden", !state.account.isHost);
   els.adminButton.classList.toggle("hidden", !state.account.isHost);
   const hasWings = clientCanFly(state.account);
   els.flyUpButton.classList.toggle("hidden", !hasWings);
@@ -539,6 +542,9 @@ function updateWorldState(players, coins, houses = [], swing) {
   updateSwingMesh(swing);
   const me = state.players.get(state.myId);
   updateChallengeStage(me?.challengeLevel || state.account?.level || 1);
+  if (!els.modal.classList.contains("hidden") && els.modalTitle.textContent === "在線玩家") {
+    showOnlinePlayersModal();
+  }
   els.enterHouseButton.textContent = me?.location === "room" ? "離開" : "進入";
   els.swingButton.textContent = me?.ride === "swing" ? "下鞦韆" : "上鞦韆";
   updateActionButtons(me, houses);
@@ -1414,6 +1420,44 @@ function showChallengeModal() {
     send(inChallenge ? "leaveChallenge" : "enterChallenge");
     closeModal();
   });
+}
+
+function showOnlinePlayersModal() {
+  if (!state.account?.isHost) {
+    showNotice("只有主機可以查看在線玩家。");
+    return;
+  }
+  const players = [...state.players.values()].sort((a, b) => {
+    if (a.isHost !== b.isHost) return a.isHost ? -1 : 1;
+    return String(a.displayName || a.accountCode).localeCompare(String(b.displayName || b.accountCode));
+  });
+  openModal("在線玩家", `
+    <div class="list">
+      <div class="list-item">
+        <div class="split">
+          <strong>目前在線</strong>
+          <span>${players.length} 隻貓</span>
+        </div>
+      </div>
+      ${players.map((player) => `
+        <div class="list-item">
+          <div class="split">
+            <strong>${escapeHtml(player.displayName || player.accountCode)}</strong>
+            <span>${player.isHost ? "主機" : `Lv. ${player.level || 1}`}</span>
+          </div>
+          <small>${locationLabel(player.location)} · 金幣 ${player.isHost ? "∞" : Number(player.coins || 0)}</small>
+        </div>
+      `).join("") || "<p>目前沒有玩家在線。</p>"}
+    </div>
+  `);
+}
+
+function locationLabel(location) {
+  return {
+    island: "貓眼星雲島",
+    challenge: "闖關中",
+    room: "房間裡"
+  }[location] || "未知位置";
 }
 
 function showAdminModal() {

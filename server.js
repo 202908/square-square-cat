@@ -408,6 +408,7 @@ function tickWorld() {
       accountCode: session.account.code,
       displayName: displayNameFor(session.account),
       isHost: session.account.isHost,
+      level: session.account.level,
       catVariant: session.account.catVariant,
       equipped: session.account.equipped,
       roomItems: session.player.location === "room" ? session.account.roomItems : [],
