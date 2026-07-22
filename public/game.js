@@ -11,6 +11,7 @@ const state = {
   titleColors: {},
   titlePlayers: [],
   players: new Map(),
+  flatWorld: { coins: [], houses: [], bushes: [], swing: null, ferris: null },
   meshes: new Map(),
   coinMeshes: new Map(),
   bushMeshes: new Map(),
@@ -49,6 +50,7 @@ const els = {
   authError: document.querySelector("#authError"),
   cancelAuth: document.querySelector("#cancelAuth"),
   canvas: document.querySelector("#gameCanvas"),
+  flatCanvas: document.querySelector("#flatCanvas"),
   accountName: document.querySelector("#accountName"),
   levelText: document.querySelector("#levelText"),
   levelRewardsButton: document.querySelector("#levelRewardsButton"),
@@ -96,6 +98,7 @@ const els = {
 let scene;
 let camera;
 let renderer;
+let flatCtx;
 let island;
 let clock;
 let roomGroup;
@@ -411,6 +414,7 @@ function initThree() {
   camera = new THREE.PerspectiveCamera(58, 1, 0.1, 500);
   renderer = new THREE.WebGLRenderer({ canvas: els.canvas, antialias: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  flatCtx = els.flatCanvas.getContext("2d");
   clock = new THREE.Clock();
 
   const ambient = new THREE.HemisphereLight(0xb7efff, 0x233820, 2.2);
@@ -629,6 +633,7 @@ function updateWorldState(message) {
   const bushes = message.bushes || [];
   const ferris = message.ferris;
   state.ferris = ferris || state.ferris;
+  state.flatWorld = { coins, houses, bushes, swing, ferris: state.ferris };
   state.totalAccounts = Number(message.totalAccounts || state.totalAccounts || 0);
   const ids = new Set(players.map((player) => player.id));
   for (const [id, mesh] of state.meshes) {
@@ -1660,26 +1665,315 @@ function trailColor(trailId, index) {
   }[trailId] || rainbow[index % rainbow.length];
 }
 
+function drawFlatWorld() {
+  if (!flatCtx) return;
+  resizeFlatCanvas();
+  const dpr = Math.max(1, devicePixelRatio || 1);
+  const width = els.flatCanvas.width / dpr;
+  const height = els.flatCanvas.height / dpr;
+  const ctx = flatCtx;
+  ctx.save();
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = "#bfe8ff";
+  ctx.fillRect(0, 0, width, height);
+
+  const me = state.players.get(state.myId);
+  if (!me) {
+    ctx.fillStyle = "#183040";
+    ctx.font = "700 18px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("正在進入 2D 貓眼星雲...", width / 2, height / 2);
+    ctx.restore();
+    return;
+  }
+
+  const scale = me.location === "challenge" ? 16 : 7;
+  const groundY = height * 0.72;
+  const baseY = me.location === "challenge" ? Math.max(1, me.y) : 1;
+  const view = {
+    scale,
+    groundY,
+    toX: (x) => width / 2 + (x - me.x) * scale,
+    toY: (y) => groundY - (y - baseY) * scale
+  };
+
+  if (me.location === "challenge") {
+    drawFlatChallenge(ctx, view, me);
+  } else if (me.location === "room") {
+    drawFlatRoom(ctx, view, width, height);
+  } else {
+    drawFlatIsland(ctx, view, width, height);
+  }
+
+  [...state.players.values()]
+    .filter((player) => player.location === me.location)
+    .sort((a, b) => a.y - b.y)
+    .forEach((player) => drawFlatCat(ctx, view, player, player.id === state.myId));
+  ctx.restore();
+}
+
+function drawFlatIsland(ctx, view, width, height) {
+  ctx.fillStyle = "#ffcadf";
+  ctx.fillRect(0, view.groundY, width / 3, height - view.groundY);
+  ctx.fillStyle = "#bfe8ff";
+  ctx.fillRect(width / 3, view.groundY, width / 3, height - view.groundY);
+  ctx.fillStyle = "#d9c7ff";
+  ctx.fillRect((width / 3) * 2, view.groundY, width / 3, height - view.groundY);
+  ctx.fillStyle = "#62b7ff";
+  ctx.fillRect(0, view.groundY + 18, width, 14);
+
+  drawFlatSlide(ctx, view, -24);
+  drawFlatSwing(ctx, view, 12);
+  drawFlatFerris(ctx, view, state.flatWorld.ferris || { x: -38, angle: 0 });
+  for (const house of state.flatWorld.houses || []) drawFlatHouse(ctx, view, house);
+  for (const bush of state.flatWorld.bushes || []) drawFlatBush(ctx, view, bush);
+  for (const coin of state.flatWorld.coins || []) {
+    if (!coin.taken) drawFlatCoin(ctx, view, coin);
+  }
+}
+
+function drawFlatRoom(ctx, view, width, height) {
+  ctx.fillStyle = "#bfe8ff";
+  ctx.fillRect(0, view.groundY - 120, width, 120);
+  ctx.fillStyle = "#f3d8ff";
+  ctx.fillRect(0, view.groundY, width, height - view.groundY);
+}
+
+function drawFlatChallenge(ctx, view, me) {
+  ctx.fillStyle = "#20263a";
+  ctx.fillRect(0, view.groundY, els.flatCanvas.width, 90);
+  const level = me.challengeLevel || state.account?.level || 1;
+  for (const platform of getChallengePlatforms(level)) {
+    ctx.fillStyle = hexColor(platform.color);
+    ctx.fillRect(view.toX(platform.x - platform.w / 2), view.toY(platform.y), platform.w * view.scale, 10);
+  }
+  const finish = challengeFinishForLevel(level);
+  ctx.fillStyle = "#fff1a8";
+  ctx.fillRect(view.toX(finish.x) - 14, view.toY(finish.y) - 48, 28, 48);
+  ctx.fillStyle = "#5d4b00";
+  ctx.font = "700 12px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("終點", view.toX(finish.x), view.toY(finish.y) - 54);
+}
+
+function drawFlatSlide(ctx, view, x) {
+  const sx = view.toX(x);
+  const sy = view.groundY - 8;
+  ctx.fillStyle = "#cdb7ff";
+  ctx.fillRect(sx - 34, sy - 58, 48, 10);
+  ctx.fillStyle = "#ff9fc2";
+  ctx.beginPath();
+  ctx.moveTo(sx - 16, sy - 48);
+  ctx.lineTo(sx + 58, sy - 8);
+  ctx.lineTo(sx + 50, sy + 2);
+  ctx.lineTo(sx - 24, sy - 38);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "#8ed7ff";
+  for (let i = 0; i < 5; i += 1) ctx.fillRect(sx - 70 + i * 9, sy - 8 - i * 10, 22, 5);
+}
+
+function drawFlatSwing(ctx, view, x) {
+  const sx = view.toX(x);
+  const sy = view.groundY - 4;
+  ctx.strokeStyle = "#6aaed0";
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.moveTo(sx - 46, sy);
+  ctx.lineTo(sx - 32, sy - 72);
+  ctx.lineTo(sx + 32, sy - 72);
+  ctx.lineTo(sx + 46, sy);
+  ctx.stroke();
+  const angle = Number(state.flatWorld.swing?.angle || 0);
+  const seatX = sx + Math.sin(angle) * 28;
+  const seatY = sy - 25 + Math.abs(Math.sin(angle)) * 10;
+  ctx.strokeStyle = "#f7f0ff";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(sx - 16, sy - 70);
+  ctx.lineTo(seatX - 18, seatY);
+  ctx.moveTo(sx + 16, sy - 70);
+  ctx.lineTo(seatX + 18, seatY);
+  ctx.stroke();
+  ctx.fillStyle = "#ffc5dc";
+  ctx.fillRect(seatX - 24, seatY, 48, 8);
+}
+
+function drawFlatFerris(ctx, view, ferris) {
+  const sx = view.toX(ferris.x ?? -38);
+  const sy = view.groundY - 88;
+  const angle = Number(ferris.angle || 0);
+  ctx.strokeStyle = "#5aa8d0";
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.arc(sx, sy, 56, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.strokeStyle = "#bfe8ff";
+  ctx.lineWidth = 3;
+  for (let i = 0; i < 8; i += 1) {
+    const a = angle + (i * Math.PI * 2) / 8;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.lineTo(sx + Math.cos(a) * 56, sy + Math.sin(a) * 56);
+    ctx.stroke();
+    ctx.fillStyle = "#ffc5dc";
+    ctx.fillRect(sx + Math.cos(a) * 56 - 10, sy + Math.sin(a) * 56 - 8, 20, 16);
+  }
+  ctx.fillStyle = "#fff1a8";
+  ctx.beginPath();
+  ctx.arc(sx, sy, 12, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawFlatHouse(ctx, view, house) {
+  const x = view.toX(house.x);
+  const y = view.groundY - 42;
+  ctx.fillStyle = "#ffc5dc";
+  ctx.fillRect(x - 24, y, 48, 42);
+  ctx.fillStyle = "#d9c7ff";
+  ctx.beginPath();
+  ctx.moveTo(x - 30, y);
+  ctx.lineTo(x, y - 26);
+  ctx.lineTo(x + 30, y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "#6b4f8f";
+  ctx.fillRect(x - 7, y + 16, 14, 26);
+}
+
+function drawFlatBush(ctx, view, bush) {
+  if (bush.searched) return;
+  const x = view.toX(bush.x);
+  const y = view.groundY - 12;
+  ctx.fillStyle = "#67d88a";
+  ctx.beginPath();
+  ctx.arc(x - 10, y, 12, 0, Math.PI * 2);
+  ctx.arc(x + 2, y - 8, 14, 0, Math.PI * 2);
+  ctx.arc(x + 14, y, 12, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawFlatCoin(ctx, view, coin) {
+  const x = view.toX(coin.x);
+  const y = view.toY(coin.y || 2);
+  ctx.fillStyle = "#ffd95a";
+  ctx.beginPath();
+  ctx.arc(x, y, 7, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#8c6b00";
+  ctx.fillRect(x - 2, y - 5, 4, 10);
+}
+
+function drawFlatCat(ctx, view, player, isMe) {
+  const palette = catPalette(player.catVariant);
+  const x = view.toX(player.x);
+  const y = view.toY(player.y);
+  const size = isMe ? 26 : 23;
+  if (player.equipped?.trail) drawFlatTrail(ctx, view, player, size);
+  if (player.equipped?.pet && player.location !== "challenge") drawFlatMiniCat(ctx, x - 38, y + 12, palette);
+  if (player.equipped?.clothes && String(player.equipped.clothes).includes("wing")) {
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.moveTo(x - size * 0.55, y - size * 0.45);
+    ctx.lineTo(x - size * 1.45, y - size * 0.95);
+    ctx.lineTo(x - size * 0.9, y + size * 0.05);
+    ctx.moveTo(x + size * 0.55, y - size * 0.45);
+    ctx.lineTo(x + size * 1.45, y - size * 0.95);
+    ctx.lineTo(x + size * 0.9, y + size * 0.05);
+    ctx.fill();
+  }
+  ctx.fillStyle = hexColor(palette.body);
+  ctx.fillRect(x - size / 2, y - size, size, size);
+  ctx.beginPath();
+  ctx.moveTo(x - size / 2, y - size);
+  ctx.lineTo(x - size * 0.25, y - size * 1.35);
+  ctx.lineTo(x, y - size);
+  ctx.lineTo(x + size * 0.25, y - size * 1.35);
+  ctx.lineTo(x + size / 2, y - size);
+  ctx.fill();
+  if (player.catVariant === "calico") {
+    ctx.fillStyle = "#2c231f";
+    ctx.fillRect(x - size * 0.38, y - size * 0.86, size * 0.22, size * 0.2);
+    ctx.fillStyle = "#d77a2d";
+    ctx.fillRect(x + size * 0.12, y - size * 0.55, size * 0.24, size * 0.2);
+  }
+  ctx.fillStyle = "#211a16";
+  ctx.beginPath();
+  ctx.arc(x - size * 0.18, y - size * 0.62, 2.2, 0, Math.PI * 2);
+  ctx.arc(x + size * 0.18, y - size * 0.62, 2.2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#211a16";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(x - 4, y - size * 0.45, 5, 0.15, Math.PI * 0.85);
+  ctx.arc(x + 4, y - size * 0.45, 5, Math.PI * 0.15, Math.PI * 0.85);
+  ctx.stroke();
+  ctx.fillStyle = isMe ? "#10251c" : "#14202a";
+  ctx.font = "700 11px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText(player.displayName || player.accountCode, x, y - size * 1.55);
+}
+
+function drawFlatMiniCat(ctx, x, y, palette) {
+  ctx.fillStyle = hexColor(palette.body);
+  ctx.fillRect(x - 8, y - 14, 16, 16);
+  ctx.beginPath();
+  ctx.moveTo(x - 8, y - 14);
+  ctx.lineTo(x - 4, y - 22);
+  ctx.lineTo(x, y - 14);
+  ctx.lineTo(x + 4, y - 22);
+  ctx.lineTo(x + 8, y - 14);
+  ctx.fill();
+  ctx.fillStyle = "#211a16";
+  ctx.fillRect(x - 4, y - 8, 2, 2);
+  ctx.fillRect(x + 3, y - 8, 2, 2);
+}
+
+function drawFlatTrail(ctx, view, player, size) {
+  ctx.fillStyle = hexColor(trailColor(player.equipped.trail, 0));
+  for (let i = 1; i <= 4; i += 1) {
+    ctx.globalAlpha = 0.18 * (5 - i);
+    ctx.fillRect(view.toX(player.x - i * 0.8) - 5, view.toY(player.y) - size * 0.65, 10, 10);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function resizeFlatCanvas() {
+  const dpr = Math.max(1, devicePixelRatio || 1);
+  const width = Math.max(1, els.gameScreen.clientWidth || window.innerWidth);
+  const height = Math.max(1, els.gameScreen.clientHeight || window.innerHeight);
+  const pixelWidth = Math.floor(width * dpr);
+  const pixelHeight = Math.floor(height * dpr);
+  if (els.flatCanvas.width !== pixelWidth || els.flatCanvas.height !== pixelHeight) {
+    els.flatCanvas.width = pixelWidth;
+    els.flatCanvas.height = pixelHeight;
+  }
+}
+
+function hexColor(value) {
+  return `#${Number(value || 0).toString(16).padStart(6, "0")}`;
+}
+
 function animate() {
   requestAnimationFrame(animate);
   clock.getDelta();
+  els.flatCanvas.classList.toggle("hidden", !is2DMode());
+  if (is2DMode()) {
+    drawFlatWorld();
+    return;
+  }
   const me = state.players.get(state.myId);
   if (me) {
-    if (is2DMode()) {
-      const target = new THREE.Vector3(me.x, me.y + 6.5, me.z + 28);
-      camera.position.lerp(target, 0.12);
-      camera.lookAt(me.x, me.y + 1.1, me.z);
-    } else {
-      const distance = 15.8;
-      const baseYaw = -0.6 + state.cameraYaw;
-      const target = new THREE.Vector3(
-        me.x + Math.sin(baseYaw) * distance,
-        me.y + 8,
-        me.z + Math.cos(baseYaw) * distance
-      );
-      camera.position.lerp(target, 0.08);
-      camera.lookAt(me.x, me.y + 1, me.z);
-    }
+    const distance = 15.8;
+    const baseYaw = -0.6 + state.cameraYaw;
+    const target = new THREE.Vector3(
+      me.x + Math.sin(baseYaw) * distance,
+      me.y + 8,
+      me.z + Math.cos(baseYaw) * distance
+    );
+    camera.position.lerp(target, 0.08);
+    camera.lookAt(me.x, me.y + 1, me.z);
   } else {
     camera.position.set(0, 16, 32);
     camera.lookAt(0, 0, 0);
