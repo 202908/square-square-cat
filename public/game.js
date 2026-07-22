@@ -193,7 +193,7 @@ function bindUi() {
       state.jump = true;
     }
     if (event.repeat) return;
-    if (event.code === "KeyE") sendAction("stack");
+    if (event.code === "KeyN") sendAction("stack");
     if (event.code === "KeyM") sendAction("attack");
   });
   window.addEventListener("keyup", (event) => {
