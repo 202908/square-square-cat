@@ -13,6 +13,7 @@ import {
   claimLevelReward,
   completeChallenge,
   createAccount,
+  damageAdultPlayer,
   equipItem,
   getChallengePlatforms,
   updateSurvivalStats,
@@ -266,6 +267,20 @@ test("adult survival death resets hunger and thirst", () => {
   assert.equal(result.died, true);
   assert.equal(result.account.hunger, 100);
   assert.equal(result.account.thirst, 100);
+});
+
+test("adult players lose health from attacks but child and host do not", () => {
+  const adult = createAccount("adult", { survivalMode: "adult", health: 50 });
+  const child = createAccount("child", { survivalMode: "child", health: 50 });
+  const host = createAccount("host", { isHost: true, survivalMode: "host", health: 50 });
+
+  const adultResult = damageAdultPlayer(adult, 18);
+  const childResult = damageAdultPlayer(child, 18);
+  const hostResult = damageAdultPlayer(host, 18);
+
+  assert.equal(adultResult.account.health, 32);
+  assert.equal(childResult.account.health, 50);
+  assert.equal(hostResult.account.health, 50);
 });
 
 test("monster dies after three hits", () => {

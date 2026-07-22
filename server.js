@@ -21,6 +21,7 @@ import {
   claimLevelReward,
   completeChallenge,
   createAccount,
+  damageAdultPlayer,
   damageMonster,
   equipItem,
   getChallengePlatforms,
@@ -157,6 +158,7 @@ async function loadData() {
       account.survivalMode ??= account.isHost ? "host" : null;
       account.hunger ??= 100;
       account.thirst ??= 100;
+      account.health ??= 100;
       if (!Array.isArray(account.claimedLevelRewards)) {
         account.claimedLevelRewards = [];
         changedAccounts = true;
@@ -508,6 +510,7 @@ function tickWorld() {
       survivalMode: session.account.survivalMode,
       hunger: session.account.hunger,
       thirst: session.account.thirst,
+      health: session.account.health,
       catVariant: session.account.catVariant,
       equipped: session.account.equipped,
       roomItems: session.player.location === "room" ? session.account.roomItems : [],
@@ -803,6 +806,25 @@ function handleAttack(session) {
   target.player.z += (dz / distance) * 1.8;
   target.player.vy = 7.5;
   target.player.onGround = false;
+  const damageResult = damageAdultPlayer(target.account, 18);
+  target.account = damageResult.account;
+  if (damageResult.died) {
+    const spawn = randomSpawn();
+    target.player.x = spawn.x;
+    target.player.y = 4;
+    target.player.z = spawn.z;
+    target.player.vy = 0;
+    persistSessionAccount(target);
+    sendAccount(target.socket, target.account);
+    broadcast("notice", { message: `${displayNameFor(session.account)} 咬了 ${displayNameFor(target.account)}，${displayNameFor(target.account)} 血量歸零回到出生點。` });
+    return;
+  }
+  if (damageResult.damaged) {
+    persistSessionAccount(target);
+    sendAccount(target.socket, target.account);
+    broadcast("notice", { message: `${displayNameFor(session.account)} 咬了 ${displayNameFor(target.account)} 一下，扣了血。` });
+    return;
+  }
   broadcast("notice", { message: `${displayNameFor(session.account)} 咬了 ${displayNameFor(target.account)} 一下。` });
 }
 
@@ -1202,6 +1224,7 @@ function handleSetSurvivalMode(socket, session, mode) {
   session.account.survivalMode = selected;
   session.account.hunger = 100;
   session.account.thirst = 100;
+  session.account.health = 100;
   persistSessionAccount(session);
   sendAccount(socket, session.account);
   send(socket, "notice", { message: selected === "adult" ? "已設定為大人模式。" : "已設定為小孩模式。" });

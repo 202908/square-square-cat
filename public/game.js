@@ -53,6 +53,7 @@ const els = {
   diamondAmount: document.querySelector("#diamondAmount"),
   teamStatus: document.querySelector("#teamStatus"),
   survivalHud: document.querySelector("#survivalHud"),
+  healthText: document.querySelector("#healthText"),
   hungerText: document.querySelector("#hungerText"),
   thirstText: document.querySelector("#thirstText"),
   coinCodeButton: document.querySelector("#coinCodeButton"),
@@ -898,10 +899,13 @@ function updateSurvivalHud(me) {
   const show = me?.survivalMode === "adult";
   els.survivalHud.classList.toggle("hidden", !show);
   if (!show) return;
+  const health = Math.round(Number(me.health ?? 100));
   const hunger = Math.round(Number(me.hunger ?? 100));
   const thirst = Math.round(Number(me.thirst ?? 100));
+  els.healthText.textContent = `血 ${health}%`;
   els.hungerText.textContent = `飽 ${hunger}%`;
   els.thirstText.textContent = `水 ${thirst}%`;
+  els.survivalHud.style.setProperty("--health", `${health}%`);
   els.survivalHud.style.setProperty("--hunger", `${hunger}%`);
   els.survivalHud.style.setProperty("--thirst", `${thirst}%`);
 }
