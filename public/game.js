@@ -548,8 +548,10 @@ function updateWorldState(players, coins, houses = [], swing, bushes = []) {
   const ids = new Set(players.map((player) => player.id));
   for (const [id, mesh] of state.meshes) {
     if (!ids.has(id)) {
+      if (mesh.userData.trailGroup) scene.remove(mesh.userData.trailGroup);
       scene.remove(mesh);
       state.meshes.delete(id);
+      state.players.delete(id);
     }
   }
   players.forEach((player) => {
@@ -672,7 +674,7 @@ function createCatMesh(player) {
   sprite.scale.set(4, 1, 1);
   group.add(sprite);
   const trailGroup = new THREE.Group();
-  group.add(trailGroup);
+  scene.add(trailGroup);
   group.userData = { label, texture, sprite, tail, hatGroup, clothesGroup, petGroup, lastName: "", trailGroup, trailPoints: [] };
   return group;
 }
@@ -1282,31 +1284,55 @@ function updateTrail(mesh, player) {
   mesh.userData.lastTrailId = trailId;
   const now = Date.now();
   const last = points[0];
-  if (!last || Math.hypot(last.x - player.x, last.z - player.z) > 0.45 || now - last.time > 350) {
-    points.unshift({ x: player.x, y: player.y + 0.55, z: player.z, time: now });
+  if (!last || Math.hypot(last.x - player.x, last.z - player.z) > 0.32 || now - last.time > 180) {
+    points.unshift({
+      x: player.x,
+      y: trailHeightFor(player),
+      z: player.z,
+      time: now
+    });
   }
-  while (points.length && now - points.at(-1).time > 10000) points.pop();
+  while (points.length && now - points.at(-1).time > 5000) points.pop();
   mesh.userData.trailGroup.clear();
-  points.slice(2).forEach((point, index) => {
-    const ageRatio = Math.min(1, (now - point.time) / 10000);
+  points.forEach((point, index) => {
+    const ageRatio = Math.min(1, (now - point.time) / 5000);
     const meshlet = createTrailParticle(trailId, index, ageRatio);
-    meshlet.position.set(point.x - player.x, point.y - player.y, point.z - player.z);
+    meshlet.position.set(point.x, point.y, point.z);
+    meshlet.scale.setScalar(0.35 + 0.65 * (1 - ageRatio));
     mesh.userData.trailGroup.add(meshlet);
   });
 }
 
+function trailHeightFor(player) {
+  if (player.location === "challenge") return player.y - 0.46;
+  if (player.location === "room") return player.y - 0.46;
+  return Math.max(player.y - 0.48, -1);
+}
+
 function createTrailParticle(trailId, index, ageRatio = 0) {
-  const opacity = Math.max(0.04, 0.5 * (1 - ageRatio));
+  const opacity = Math.max(0, 0.62 * (1 - ageRatio));
   const material = new THREE.MeshBasicMaterial({
     color: trailColor(trailId, index),
     transparent: true,
-    opacity
+    opacity,
+    depthWrite: false
   });
-  if (trailId === "rainbow-trail") return new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 8), material);
-  if (trailId === "poop-trail") return new THREE.Mesh(new THREE.ConeGeometry(0.24, 0.34, 8), material);
-  if (trailId === "takoyaki-trail") return new THREE.Mesh(new THREE.SphereGeometry(0.26, 12, 8), material);
-  if (trailId === "cloud-trail") return new THREE.Mesh(new THREE.SphereGeometry(0.34, 12, 8), material);
-  return new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.32, 0.32), material);
+  let particle;
+  if (trailId === "poop-trail") {
+    particle = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.18, 8), material);
+  } else if (trailId === "takoyaki-trail") {
+    particle = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 8), material);
+  } else if (trailId === "cloud-trail") {
+    particle = new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 8), material);
+  } else if (trailId === "bubble-trail") {
+    particle = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.035, 8, 18), material);
+    particle.rotation.x = Math.PI / 2;
+  } else {
+    particle = new THREE.Mesh(new THREE.CircleGeometry(0.24, 18), material);
+    particle.rotation.x = -Math.PI / 2;
+  }
+  particle.renderOrder = 4;
+  return particle;
 }
 
 function trailColor(trailId, index) {
