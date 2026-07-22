@@ -42,9 +42,17 @@ const CHALLENGE_PLATFORMS = [
   { x: -2, y: 17, z: 27, w: 9, d: 7 }
 ];
 const CHALLENGE_BASE = { x: -760, y: 1.2, z: -720 };
+const SLIDE = { topX: -28, topY: 5.9, bottomX: -14.5, bottomY: 1.2, z: -20 };
 const SOLID_FLOORS = [
   { x: -28, y: 5.5, z: -20, w: 7, d: 6 },
   ...Array.from({ length: 5 }, (_, i) => ({ x: -33.2, y: 0.98 + i * 0.8, z: -21.8 + i * 0.12, w: 3.2, d: 0.7 })),
+  ...Array.from({ length: 8 }, (_, i) => ({
+    x: -26.8 + i * 1.7,
+    y: 5.05 - i * 0.52,
+    z: -20,
+    w: 2.4,
+    d: 4.2
+  })),
   { x: 8, y: 8.4, z: 22, w: 12, d: 12 },
   { x: 28, y: 8.4, z: -12, w: 12, d: 12 }
 ];
@@ -251,6 +259,9 @@ function handleMessage(socket, message) {
     case "searchBush":
       handleSearchBush(socket, session, message.bushId);
       break;
+    case "slideDown":
+      handleSlideDown(socket, session);
+      break;
     case "sendGift":
       handleSendGift(socket, session, message.friendCode, message.itemId);
       break;
@@ -374,6 +385,7 @@ function enterWorld(socket, account, persistent, options = {}) {
       location: "island",
       roomOwner: null,
       ride: null,
+      slideProgress: null,
       teamId: null,
       flightLeader: null,
       challengeLevel: 1
@@ -436,6 +448,10 @@ function displayNameFor(account) {
 
 function updatePlayer(session, dt) {
   const player = session.player;
+  if (player.slideProgress !== null) {
+    updateSlidePlayer(session, dt);
+    return;
+  }
   if (player.flightLeader) {
     updateFlightFollower(session);
     return;
@@ -598,6 +614,45 @@ function handleAttack(session) {
   broadcast("notice", { message: `${displayNameFor(session.account)} 咬了 ${displayNameFor(target.account)} 一下。` });
 }
 
+function handleSlideDown(socket, session) {
+  const player = session.player;
+  if (player.location !== "island") return;
+  const nearTop = Math.hypot(player.x - SLIDE.topX, player.z - SLIDE.z) < 5.5 && player.y > 4.4;
+  if (!nearTop) {
+    send(socket, "notice", { message: "要站到溜滑梯上面才能溜下來。" });
+    return;
+  }
+  detachFromStack(player);
+  player.ride = null;
+  player.slideProgress = 0;
+  player.vx = 0;
+  player.vy = 0;
+  player.vz = 0;
+}
+
+function updateSlidePlayer(session, dt) {
+  const player = session.player;
+  player.slideProgress = Math.min(1, Number(player.slideProgress || 0) + dt * 0.72);
+  const t = easeInOut(player.slideProgress);
+  player.x = SLIDE.topX + (SLIDE.bottomX - SLIDE.topX) * t;
+  player.y = SLIDE.topY + (SLIDE.bottomY - SLIDE.topY) * t;
+  player.z = SLIDE.z;
+  player.yaw = Math.PI / 2;
+  player.vx = 0;
+  player.vy = 0;
+  player.vz = 0;
+  player.onGround = false;
+  if (player.slideProgress >= 1) {
+    player.slideProgress = null;
+    player.y = islandHeight(player.x, player.z) + 1;
+    player.onGround = true;
+  }
+}
+
+function easeInOut(value) {
+  return value < 0.5 ? 2 * value * value : 1 - ((-2 * value + 2) ** 2) / 2;
+}
+
 function handleSwingMount(socket, session) {
   if (session.player.location !== "island") return;
   const distance = Math.hypot(session.player.x - SWING.x, session.player.z - SWING.z);
@@ -607,6 +662,7 @@ function handleSwingMount(socket, session) {
   }
   if (!SWING.riders.includes(session.id)) SWING.riders.push(session.id);
   session.player.ride = "swing";
+  session.player.slideProgress = null;
   updateSwingRider(session);
 }
 
@@ -623,7 +679,7 @@ function handleSwingDismount(socket, session) {
 function handleSwingPump(session) {
   if (session.player.ride !== "swing") return;
   const direction = SWING.angle >= 0 ? 1 : -1;
-  SWING.velocity += 0.055 * direction;
+  SWING.velocity += 0.12 * direction;
 }
 
 function updateSwing(dt) {
@@ -980,6 +1036,7 @@ function handleEnterChallenge(socket, session) {
     stopFollowingFlight(member);
     detachFromStack(member.player);
     member.player.location = "challenge";
+    member.player.slideProgress = null;
     member.player.challengeLevel = challengeLevel;
     member.player.x = start.x + index * 2.2;
     member.player.y = 3;

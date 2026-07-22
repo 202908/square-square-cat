@@ -59,7 +59,9 @@ const els = {
   enterHouseButton: document.querySelector("#enterHouseButton"),
   clearHouseActionButton: document.querySelector("#clearHouseActionButton"),
   searchBushButton: document.querySelector("#searchBushButton"),
+  slideButton: document.querySelector("#slideButton"),
   swingButton: document.querySelector("#swingButton"),
+  swingPumpButton: document.querySelector("#swingPumpButton"),
   flyUpButton: document.querySelector("#flyUpButton"),
   flyDownButton: document.querySelector("#flyDownButton"),
   modal: document.querySelector("#modal"),
@@ -182,10 +184,12 @@ function bindUi() {
     const bush = nearestBush(me);
     if (bush) send("searchBush", { bushId: bush.id });
   });
+  els.slideButton.addEventListener("click", () => send("slideDown"));
   els.swingButton.addEventListener("click", () => {
     const me = state.players.get(state.myId);
     send(me?.ride === "swing" ? "swingDismount" : "swingMount");
   });
+  els.swingPumpButton.addEventListener("click", () => send("swingPump"));
 
   els.chatForm.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -570,6 +574,7 @@ function updateActionButtons(me, houses, bushes = []) {
   const ownHouse = houses.find((house) => house.owner === state.account?.code);
   const nearHouse = ownHouse && Math.hypot(ownHouse.x - me.x, ownHouse.z - me.z) < 6;
   const nearSwing = Math.hypot(12 - me.x, -28 - me.z) < 7;
+  const nearSlideTop = me.location === "island" && Math.hypot(me.x + 28, me.z + 20) < 5.5 && me.y > 4.6;
   const nearBush = Boolean(nearestBush(me, bushes));
 
   els.stackButton.classList.toggle("hidden", !nearPlayer);
@@ -577,7 +582,9 @@ function updateActionButtons(me, houses, bushes = []) {
   els.enterHouseButton.classList.toggle("hidden", !(me.location === "room" || nearHouse));
   els.clearHouseActionButton.classList.toggle("hidden", me.location !== "room");
   els.searchBushButton.classList.toggle("hidden", !(me.location === "island" && nearBush));
+  els.slideButton.classList.toggle("hidden", !nearSlideTop);
   els.swingButton.classList.toggle("hidden", !(me.ride === "swing" || (me.location === "island" && nearSwing)));
+  els.swingPumpButton.classList.toggle("hidden", me.ride !== "swing");
 }
 
 function nearestBush(me, bushes = null) {
