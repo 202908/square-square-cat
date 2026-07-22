@@ -604,7 +604,7 @@ export function challengeStartForLevel(level = 1) {
 export function challengeFinishForLevel(level = 1) {
   const platforms = getChallengePlatforms(level);
   const last = platforms.at(-1);
-  return { x: last.x + 4, y: last.y + 2.2, z: last.z, w: 8, d: 8 };
+  return { x: last.x, y: last.y + 0.4, z: last.z, w: 14, d: 12 };
 }
 
 export function richestDiamondAccountCode(accounts = []) {

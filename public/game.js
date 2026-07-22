@@ -1349,7 +1349,7 @@ function challengeStartForLevel(level = 1) {
 function challengeFinishForLevel(level) {
   const platforms = getChallengePlatforms(level);
   const last = platforms.at(-1);
-  return { x: last.x + 4, y: last.y + 2.2, z: last.z };
+  return { x: last.x, y: last.y + 0.4, z: last.z, w: 14, d: 12 };
 }
 
 function clampChallengeLevel(level = 1) {
@@ -1389,12 +1389,32 @@ function updateChallengeStage(level = 1) {
     challengeStageGroup.add(mesh);
   }
   const finishPosition = challengeFinishForLevel(difficulty);
-  const finish = new THREE.Mesh(
-    new THREE.BoxGeometry(8, 8, 1),
-    new THREE.MeshStandardMaterial({ color: 0xfff1a8, roughness: 0.45 })
-  );
+  const finish = createChallengeFlag();
   finish.position.set(finishPosition.x, finishPosition.y, finishPosition.z);
   challengeStageGroup.add(finish);
+}
+
+function createChallengeFlag() {
+  const group = new THREE.Group();
+  const pole = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.12, 0.12, 5.2, 12),
+    new THREE.MeshStandardMaterial({ color: 0xf8fbff, roughness: 0.5 })
+  );
+  pole.position.y = 2.6;
+  group.add(pole);
+  const flag = new THREE.Mesh(
+    new THREE.BoxGeometry(3.8, 2.1, 0.18),
+    new THREE.MeshStandardMaterial({ color: 0xffd95a, roughness: 0.42, emissive: 0x3a2a00, emissiveIntensity: 0.08 })
+  );
+  flag.position.set(1.9, 4.3, 0);
+  group.add(flag);
+  const base = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.3, 1.3, 0.26, 18),
+    new THREE.MeshStandardMaterial({ color: 0xfff1a8, roughness: 0.5 })
+  );
+  base.position.y = 0.13;
+  group.add(base);
+  return group;
 }
 
 function updateCatMesh(mesh, player) {
@@ -1749,12 +1769,25 @@ function drawFlatChallenge(ctx, view, me) {
     ctx.fillRect(view.toX(platform.x - platform.w / 2), view.toY(platform.y), platform.w * view.scale, 10);
   }
   const finish = challengeFinishForLevel(level);
-  ctx.fillStyle = "#fff1a8";
-  ctx.fillRect(view.toX(finish.x) - 14, view.toY(finish.y) - 48, 28, 48);
+  const flagX = view.toX(finish.x);
+  const flagY = view.toY(finish.y);
+  ctx.strokeStyle = "#f8fbff";
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(flagX, flagY);
+  ctx.lineTo(flagX, flagY - 58);
+  ctx.stroke();
+  ctx.fillStyle = "#ffd95a";
+  ctx.beginPath();
+  ctx.moveTo(flagX + 2, flagY - 58);
+  ctx.lineTo(flagX + 44, flagY - 48);
+  ctx.lineTo(flagX + 2, flagY - 34);
+  ctx.closePath();
+  ctx.fill();
   ctx.fillStyle = "#5d4b00";
   ctx.font = "700 12px sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText("終點", view.toX(finish.x), view.toY(finish.y) - 54);
+  ctx.fillText("終點", flagX + 18, flagY - 66);
 }
 
 function drawFlatSlide(ctx, view, x) {

@@ -1549,7 +1549,8 @@ function isAtChallengeFinish(player) {
   const finish = challengeFinishForLevel(player.challengeLevel);
   return Math.abs(player.x - finish.x) <= finish.w / 2
     && Math.abs(player.z - finish.z) <= finish.d / 2
-    && player.y >= finish.y;
+    && player.y >= finish.y - 1.2
+    && player.y <= finish.y + 7;
 }
 
 function completeChallengeForTeam(session) {

@@ -12,6 +12,7 @@ import {
   applyHousePaint,
   buyItem,
   challengeLevelForAccounts,
+  challengeFinishForLevel,
   claimLevelReward,
   completeChallenge,
   createAccount,
@@ -239,6 +240,20 @@ test("challenge platforms stay jumpable through level one hundred", () => {
       const rise = platforms[index].y - platforms[index - 1].y;
       assert.ok(rise <= MAX_CHALLENGE_STEP_Y + Number.EPSILON * 16, `Lv. ${level} step ${index} rise ${rise} is too high`);
     }
+  }
+});
+
+test("challenge finish flag sits on the last platform with a generous trigger area", () => {
+  for (const level of [1, 50, MAX_PLAYER_LEVEL]) {
+    const platforms = getChallengePlatforms(level);
+    const last = platforms.at(-1);
+    const finish = challengeFinishForLevel(level);
+
+    assert.equal(finish.y, last.y + 0.4);
+    assert.ok(finish.x >= last.x - last.w / 2);
+    assert.ok(finish.x <= last.x + last.w / 2);
+    assert.ok(finish.w >= 12);
+    assert.ok(finish.d >= 10);
   }
 });
 
