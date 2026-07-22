@@ -938,7 +938,8 @@ function updateActionButtons(me, houses, bushes = [], hazards = []) {
     if (player.id === state.myId || player.location !== me.location) return false;
     return Math.hypot(player.x - me.x, player.z - me.z) < 4.5;
   });
-  const nearMonster = me.survivalMode === "adult" && hazards.some((hazard) => {
+  const canSeeMonsters = me.isHost || me.survivalMode === "adult";
+  const nearMonster = canSeeMonsters && hazards.some((hazard) => {
     if (hazard.dead) return false;
     return Math.hypot(hazard.x - me.x, hazard.z - me.z) < 5.5;
   });
@@ -1172,7 +1173,7 @@ function createSurvivalPickupMesh(kind) {
 }
 
 function updateHazardMeshes(hazards, me) {
-  const canSeeMonsters = me?.survivalMode === "adult";
+  const canSeeMonsters = me?.isHost || me?.survivalMode === "adult";
   const activeHazards = canSeeMonsters ? hazards.filter((hazard) => !hazard.dead) : [];
   const ids = new Set(activeHazards.map((hazard) => hazard.id));
   for (const [id, mesh] of state.hazardMeshes) {

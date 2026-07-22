@@ -770,7 +770,8 @@ function handleAttack(session) {
   const target = findPlayerInFront(session, 4);
   session.player.attackUntil = Date.now() + 450;
   if (!target) {
-    const monster = session.account.survivalMode === "adult" ? findMonsterInFront(session, 5) : null;
+    const canHitMonster = session.account.isHost || session.account.survivalMode === "adult";
+    const monster = canHitMonster ? findMonsterInFront(session, 5) : null;
     if (monster) hitMonster(session, monster);
     return;
   }
