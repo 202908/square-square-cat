@@ -18,11 +18,8 @@ const state = {
   furnitureMeshes: new Map(),
   survivalPickupMeshes: new Map(),
   hazardMeshes: new Map(),
-  facilityMeshes: new Map(),
   ferris: null,
   totalAccounts: 0,
-  lastFacilityNotice: null,
-  facilityNoticeAfter: 0,
   cameraYaw: 0,
   cameraDrag: { active: false, pointerId: null, x: 0 },
   keys: new Set(),
@@ -125,73 +122,6 @@ const FERRIS_ICON_OPTIONS = [
   ["star-cat", "星星方塊貓"],
   ["diamond-cat", "鑽石方塊貓"]
 ];
-const FACILITY_NAMES = [
-  "旋轉雲朵跳台",
-  "星星彈跳床",
-  "彩虹滑索",
-  "貓掌迷宮",
-  "飛碟降落場",
-  "空中漂浮小島",
-  "巨大毛線球滾滾場",
-  "泡泡電梯",
-  "月亮鞦韆",
-  "雲朵蹦蹦屋",
-  "貓咪賽跑跑道",
-  "瀑布滑梯",
-  "星光摩天輪第二座",
-  "會移動的平台闖關",
-  "隱藏寶箱洞穴",
-  "釣魚小池塘",
-  "糖果樹林",
-  "魔法傳送門",
-  "朋友合照台",
-  "貓咪舞台表演區",
-  "小火車環島軌道",
-  "熱氣球搭乘站",
-  "空中吊橋",
-  "巨大積木城堡",
-  "鑽石礦坑",
-  "草叢尋寶區",
-  "怪物訓練場",
-  "彩色噴泉廣場",
-  "房屋裝潢展示區",
-  "寵物遊樂園",
-  "貓貓學校",
-  "星球觀景台",
-  "蘑菇跳跳森林",
-  "雲海游泳池",
-  "巨大鍵盤音樂區",
-  "盲盒抽獎機廣場",
-  "彩虹橋",
-  "雪花溜冰場",
-  "沙灘挖寶區",
-  "火箭發射台",
-  "隕石躲避場",
-  "甜甜圈旋轉盤",
-  "貓尾巴平衡木",
-  "夜光花園",
-  "變色地板廣場",
-  "風車飛行台",
-  "煙火觀賞台",
-  "好友秘密基地",
-  "團隊合作搬箱子區",
-  "島主排行榜神殿"
-];
-const FACILITY_KINDS = ["cloud", "star", "rainbow", "maze", "ufo", "island", "ball", "bubble", "moon", "bounce"];
-const FACILITY_COLORS = [0xbfe8ff, 0xfff1a8, 0xffc5dc, 0xd9c7ff, 0x8ed7ff, 0xffd6a5, 0xb7f7d8, 0xffb5d5];
-const ISLAND_FACILITIES = FACILITY_NAMES.map((name, index) => {
-  const ring = Math.floor(index / 10);
-  const angle = (index % 10) * ((Math.PI * 2) / 10) + ring * 0.28;
-  const radius = 45 + ring * 13;
-  return {
-    id: `facility-${index + 1}`,
-    name,
-    kind: FACILITY_KINDS[index % FACILITY_KINDS.length],
-    color: FACILITY_COLORS[index % FACILITY_COLORS.length],
-    x: Math.cos(angle) * radius,
-    z: Math.sin(angle) * radius
-  };
-});
 const HOUSE_PAINT_LOOKS = {
   red: { color: 0xff5a6c },
   orange: { color: 0xff9b3d },
@@ -550,7 +480,6 @@ function createPlayground() {
   addSlide(-24, 0, -20);
   addSwing(12, 0, -28);
   addFerrisWheel(-38, 0, -52);
-  addIslandFacilities();
   addChallengeCourse();
   for (let i = 0; i < 18; i += 1) {
     const post = new THREE.Mesh(
@@ -604,126 +533,6 @@ function addFerrisWheel(x, y, z) {
   rail.rotation.x = Math.PI / 2;
   group.add(rail);
 
-  group.position.set(x, y, z);
-  scene.add(group);
-}
-
-function addIslandFacilities() {
-  for (const facility of ISLAND_FACILITIES) {
-    if (state.facilityMeshes.has(facility.id)) continue;
-    const group = createFacilityMesh(facility);
-    group.position.set(facility.x, 0.12, facility.z);
-    group.rotation.y = Math.atan2(-facility.x, -facility.z);
-    group.userData.baseY = group.position.y;
-    group.userData.baseRotationY = group.rotation.y;
-    group.userData.motionSeed = Number(facility.id.split("-").at(-1) || 1) * 0.47;
-    group.userData.motionKind = facility.kind;
-    state.facilityMeshes.set(facility.id, group);
-    scene.add(group);
-  }
-}
-
-function createFacilityMesh(facility) {
-  const group = new THREE.Group();
-  const main = new THREE.MeshStandardMaterial({ color: facility.color, roughness: 0.55 });
-  const white = new THREE.MeshStandardMaterial({ color: 0xf8fbff, roughness: 0.5 });
-  const accent = new THREE.MeshStandardMaterial({ color: 0xfff1a8, roughness: 0.45 });
-
-  if (facility.kind === "cloud") {
-    for (const [x, y, z, s] of [[-1.6, 1.4, 0, 1.2], [0, 1.8, 0, 1.6], [1.8, 1.3, 0, 1.1]]) {
-      const puff = new THREE.Mesh(new THREE.SphereGeometry(s, 16, 10), white);
-      puff.position.set(x, y, z);
-      group.add(puff);
-    }
-  } else if (facility.kind === "star") {
-    for (let i = 0; i < 5; i += 1) {
-      const ray = new THREE.Mesh(new THREE.ConeGeometry(0.55, 2.8, 4), accent);
-      ray.position.y = 2.4;
-      ray.rotation.z = (i * Math.PI * 2) / 5;
-      group.add(ray);
-    }
-    const center = new THREE.Mesh(new THREE.SphereGeometry(1.15, 16, 10), main);
-    center.position.y = 2.4;
-    group.add(center);
-  } else if (facility.kind === "rainbow") {
-    [0xff5a6c, 0xffd95a, 0x67d88a, 0x62b7ff, 0xb78cff].forEach((color, index) => {
-      const arc = new THREE.Mesh(new THREE.TorusGeometry(2.6 + index * 0.32, 0.12, 8, 48, Math.PI), new THREE.MeshStandardMaterial({ color, roughness: 0.42 }));
-      arc.position.y = 0.8 + index * 0.05;
-      arc.rotation.z = Math.PI;
-      group.add(arc);
-    });
-  } else if (facility.kind === "maze") {
-    for (let i = 0; i < 4; i += 1) {
-      const wall = new THREE.Mesh(new THREE.BoxGeometry(4.6 - i * 0.7, 1.1, 0.35), main);
-      wall.position.set(0, 0.95 + i * 0.1, -1.8 + i * 1.1);
-      wall.rotation.y = i % 2 ? Math.PI / 2 : 0;
-      group.add(wall);
-    }
-  } else if (facility.kind === "ufo") {
-    const saucer = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 4.4, 0.8, 32), main);
-    saucer.position.y = 1.6;
-    group.add(saucer);
-    const dome = new THREE.Mesh(new THREE.SphereGeometry(1.8, 18, 10), white);
-    dome.scale.y = 0.55;
-    dome.position.y = 2.25;
-    group.add(dome);
-  } else if (facility.kind === "island") {
-    const islandTop = new THREE.Mesh(new THREE.CylinderGeometry(3.4, 2.7, 1, 24), main);
-    islandTop.position.y = 2.3;
-    group.add(islandTop);
-    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.75, 2.6, 12), accent);
-    stem.position.y = 1.15;
-    group.add(stem);
-  } else if (facility.kind === "ball") {
-    const ball = new THREE.Mesh(new THREE.SphereGeometry(2.2, 24, 14), main);
-    ball.position.y = 2.25;
-    group.add(ball);
-    for (let i = 0; i < 3; i += 1) {
-      const yarn = new THREE.Mesh(new THREE.TorusGeometry(2.25, 0.08, 8, 40), white);
-      yarn.rotation.set(Math.PI / 2, i * 0.7, i * 0.45);
-      yarn.position.y = 2.25;
-      group.add(yarn);
-    }
-  } else if (facility.kind === "bubble") {
-    for (let i = 0; i < 5; i += 1) {
-      const bubble = new THREE.Mesh(new THREE.SphereGeometry(0.55 + i * 0.12, 14, 8), new THREE.MeshStandardMaterial({ color: facility.color, roughness: 0.2, transparent: true, opacity: 0.48 }));
-      bubble.position.set(Math.sin(i) * 1.7, 1 + i * 0.72, Math.cos(i * 1.4) * 1.2);
-      group.add(bubble);
-    }
-  } else if (facility.kind === "moon") {
-    const moon = new THREE.Mesh(new THREE.TorusGeometry(2.1, 0.38, 12, 40, Math.PI * 1.45), accent);
-    moon.position.y = 2.7;
-    moon.rotation.z = 0.65;
-    group.add(moon);
-    const rope = new THREE.Mesh(new THREE.BoxGeometry(0.12, 2.6, 0.12), white);
-    rope.position.y = 1.6;
-    group.add(rope);
-  } else {
-    const pad = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.2, 0.55, 32), main);
-    pad.position.y = 0.85;
-    group.add(pad);
-    const spring = new THREE.Mesh(new THREE.TorusGeometry(1.1, 0.12, 8, 28), accent);
-    spring.position.y = 1.35;
-    spring.rotation.x = Math.PI / 2;
-    group.add(spring);
-  }
-
-  return group;
-}
-
-function addFacility(x, y, z, color, kind) {
-  const group = new THREE.Group();
-  const material = new THREE.MeshStandardMaterial({ color, roughness: 0.62 });
-  if (kind === "slide") {
-    const slope = new THREE.Mesh(new THREE.BoxGeometry(16, 1.2, 5), material);
-    slope.rotation.z = -0.42;
-    slope.position.set(0, 3, 0);
-    group.add(slope);
-  } else {
-    const body = new THREE.Mesh(new THREE.BoxGeometry(12, 8, 12), material);
-    body.position.y = 4;
-    group.add(body);
-  }
   group.position.set(x, y, z);
   scene.add(group);
 }
@@ -889,7 +698,6 @@ function updateWorldState(message) {
   els.swingButton.textContent = me?.ride === "swing" ? "下鞦韆" : "上鞦韆";
   updateTeamStatus(me);
   updateSurvivalHud(me);
-  updateFacilityDiscovery(me);
   updateActionButtons(me, houses, bushes, message.survivalHazards || []);
   updateRoomFurniture(me?.roomItems || []);
 }
@@ -910,28 +718,6 @@ function updateSurvivalHud(me) {
   els.thirstText.textContent = `水 ${thirst}%`;
   els.survivalHud.style.setProperty("--hunger", `${hunger}%`);
   els.survivalHud.style.setProperty("--thirst", `${thirst}%`);
-}
-
-function updateFacilityDiscovery(me) {
-  if (!me || me.location !== "island") return;
-  let nearest = null;
-  let nearestDistance = Infinity;
-  for (const facility of ISLAND_FACILITIES) {
-    const distance = Math.hypot(me.x - facility.x, me.z - facility.z);
-    if (distance < 7.5 && distance < nearestDistance) {
-      nearest = facility;
-      nearestDistance = distance;
-    }
-  }
-  if (!nearest) {
-    state.lastFacilityNotice = null;
-    return;
-  }
-  const now = Date.now();
-  if (state.lastFacilityNotice === nearest.id || now < state.facilityNoticeAfter) return;
-  state.lastFacilityNotice = nearest.id;
-  state.facilityNoticeAfter = now + 1800;
-  showNotice(`你來到了「${nearest.name}」。`);
 }
 
 function updateActionButtons(me, houses, bushes = [], hazards = []) {
@@ -1915,7 +1701,6 @@ function trailColor(trailId, index) {
 function animate() {
   requestAnimationFrame(animate);
   clock.getDelta();
-  updateFacilityAnimations(performance.now() * 0.001);
   const me = state.players.get(state.myId);
   if (me) {
     const distance = 15.8;
@@ -1932,25 +1717,6 @@ function animate() {
     camera.lookAt(0, 0, 0);
   }
   renderer.render(scene, camera);
-}
-
-function updateFacilityAnimations(time) {
-  for (const group of state.facilityMeshes.values()) {
-    const seed = group.userData.motionSeed || 0;
-    const kind = group.userData.motionKind;
-    group.position.y = (group.userData.baseY || 0) + Math.sin(time * 1.4 + seed) * 0.22;
-    if (["star", "ufo", "bubble", "ball"].includes(kind)) {
-      group.rotation.y = (group.userData.baseRotationY || 0) + time * (kind === "ball" ? 1.2 : 0.45);
-    }
-    if (kind === "moon") {
-      group.rotation.z = Math.sin(time * 1.5 + seed) * 0.08;
-    }
-    if (kind === "bounce") {
-      group.scale.y = 1 + Math.abs(Math.sin(time * 2.3 + seed)) * 0.12;
-    } else {
-      group.scale.y = 1;
-    }
-  }
 }
 
 function resizeRenderer() {
