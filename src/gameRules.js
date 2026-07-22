@@ -560,6 +560,17 @@ export function challengeFinishForLevel(level = 1) {
   return { x: last.x + 4, y: last.y + 2.2, z: last.z, w: 8, d: 8 };
 }
 
+export function richestDiamondAccountCode(accounts = []) {
+  const ranked = accounts
+    .filter((account) => account?.code)
+    .map((account) => ({
+      code: account.code,
+      diamonds: account.isHost ? Number.MAX_SAFE_INTEGER : Number(account.diamonds || 0)
+    }))
+    .sort((a, b) => b.diamonds - a.diamonds || String(a.code).localeCompare(String(b.code)));
+  return ranked[0]?.code || null;
+}
+
 export function claimLevelReward(account, level) {
   if (account.isHost) {
     return { ok: false, message: "主機不用領等級獎勵，已經是無限資源。" };

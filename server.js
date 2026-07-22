@@ -26,6 +26,7 @@ import {
   isValidNewAccountCode,
   makeGuestAccount,
   redeemCode,
+  richestDiamondAccountCode,
   sendCoinGift,
   sendDiamondGift
 } from "./src/gameRules.js";
@@ -66,6 +67,16 @@ const SOLID_BLOCKS = [
   { x: -28, z: -20, w: 7, d: 6 }
 ];
 const SWING = { x: 12, y: 2.2, z: -28, angle: 0, velocity: 0, riders: [] };
+const FERRIS = {
+  x: -38,
+  y: 11.5,
+  z: -52,
+  radius: 9,
+  seats: 8,
+  angle: 0,
+  icon: "jump-cat",
+  platformGuests: []
+};
 
 const sessions = new Map();
 const sockets = new Map();
@@ -104,6 +115,7 @@ function handleConnection(socket) {
     sockets.delete(socket);
     if (id && sessions.has(id)) {
       detachFromStack(sessions.get(id).player);
+      FERRIS.platformGuests = FERRIS.platformGuests.filter((guestId) => guestId !== id);
       sessions.delete(id);
       broadcast("notice", { message: "一隻方塊貓離開了星球。" });
     }
@@ -309,6 +321,27 @@ function handleMessage(socket, message) {
     case "swingPump":
       handleSwingPump(session);
       break;
+    case "ferrisRide":
+      handleFerrisRide(socket, session);
+      break;
+    case "ferrisExit":
+      handleFerrisExit(socket, session);
+      break;
+    case "ferrisCenterEnter":
+      handleFerrisCenterEnter(socket, session);
+      break;
+    case "ferrisCenterLeave":
+      handleFerrisCenterLeave(socket, session);
+      break;
+    case "ferrisCenterInvite":
+      handleFerrisCenterInvite(socket, session);
+      break;
+    case "acceptFerrisCenterInvite":
+      handleAcceptFerrisCenterInvite(socket, session, message.leaderId);
+      break;
+    case "setFerrisIcon":
+      handleSetFerrisIcon(socket, session, message.icon);
+      break;
     case "flightInvite":
       handleFlightInvite(socket, session);
       break;
@@ -396,6 +429,7 @@ function enterWorld(socket, account, persistent, options = {}) {
       location: "island",
       roomOwner: null,
       ride: null,
+      ferrisSeat: null,
       slideProgress: null,
       teamId: null,
       flightLeader: null,
@@ -427,13 +461,20 @@ function sanitizeInput(input = {}, hasWings) {
 
 function tickWorld() {
   updateSwing(1 / TICK_RATE);
+  updateFerris(1 / TICK_RATE);
   for (const session of sessions.values()) {
     updatePlayer(session, 1 / TICK_RATE);
   }
+  const richestCode = richestDiamondAccountCode([...sessions.values()].map((session) => session.account));
   broadcast("state", {
     coins: worldCoins,
     bushes: worldBushes,
     swing: SWING,
+    ferris: {
+      ...FERRIS,
+      richestCode,
+      platformGuests: FERRIS.platformGuests.filter((id) => sessions.has(id))
+    },
     houses: Object.values(accounts).filter((account) => account.house).map((account) => ({
       owner: account.code,
       ...account.house
@@ -449,7 +490,8 @@ function tickWorld() {
       roomItems: session.player.location === "room" ? session.account.roomItems : [],
       teamId: session.player.teamId,
       challengeLevel: session.player.challengeLevel,
-      coins: session.account.coins
+      coins: session.account.coins,
+      diamonds: session.account.diamonds
     }))
   });
 }
@@ -470,6 +512,14 @@ function updatePlayer(session, dt) {
   }
   if (player.ride === "swing") {
     updateSwingRider(session);
+    return;
+  }
+  if (player.ride === "ferris") {
+    updateFerrisRider(session);
+    return;
+  }
+  if (player.ride === "ferrisCenter") {
+    updateFerrisCenterRider(session);
     return;
   }
   if (player.location === "room") {
@@ -755,6 +805,159 @@ function stopFollowingFlight(session) {
   session.player.vx = 0;
   session.player.vy = 0;
   session.player.vz = 0;
+}
+
+function updateFerris(dt) {
+  FERRIS.angle = (FERRIS.angle + dt * 0.32) % (Math.PI * 2);
+  FERRIS.platformGuests = FERRIS.platformGuests.filter((id) => sessions.has(id));
+}
+
+function ferrisSeatPosition(index = 0) {
+  const angle = FERRIS.angle + (index * Math.PI * 2) / FERRIS.seats;
+  return {
+    x: FERRIS.x + Math.sin(angle) * FERRIS.radius,
+    y: FERRIS.y - Math.cos(angle) * FERRIS.radius,
+    z: FERRIS.z
+  };
+}
+
+function bottomFerrisSeatIndex() {
+  let best = 0;
+  let lowest = Infinity;
+  for (let index = 0; index < FERRIS.seats; index += 1) {
+    const position = ferrisSeatPosition(index);
+    if (position.y < lowest) {
+      lowest = position.y;
+      best = index;
+    }
+  }
+  return best;
+}
+
+function isNearFerris(player) {
+  return player.location === "island" && Math.hypot(player.x - FERRIS.x, player.z - FERRIS.z) < 13;
+}
+
+function ferrisRichestCode() {
+  return richestDiamondAccountCode([...sessions.values()].map((candidate) => candidate.account));
+}
+
+function canControlFerrisCenter(session) {
+  return session.account.code === ferrisRichestCode();
+}
+
+function handleFerrisRide(socket, session) {
+  if (!isNearFerris(session.player)) {
+    send(socket, "notice", { message: "請靠近摩天輪再進入。" });
+    return;
+  }
+  detachFromStack(session.player);
+  stopFollowingFlight(session);
+  session.player.ride = "ferris";
+  session.player.ferrisSeat = bottomFerrisSeatIndex();
+  updateFerrisRider(session);
+  send(socket, "notice", { message: "你坐上摩天輪了。" });
+}
+
+function handleFerrisExit(socket, session) {
+  if (session.player.ride !== "ferris" && session.player.ride !== "ferrisCenter") return;
+  const fromCenter = session.player.ride === "ferrisCenter";
+  session.player.ride = null;
+  session.player.ferrisSeat = null;
+  FERRIS.platformGuests = FERRIS.platformGuests.filter((id) => id !== session.id);
+  session.player.x += fromCenter ? 4 : 1.5;
+  session.player.vy = 0;
+  session.player.onGround = false;
+  send(socket, "notice", { message: fromCenter ? "你離開摩天輪中心平台。" : "你離開摩天輪座位。" });
+}
+
+function updateFerrisRider(session) {
+  const position = ferrisSeatPosition(Number(session.player.ferrisSeat || 0));
+  session.player.x = position.x;
+  session.player.y = position.y;
+  session.player.z = position.z;
+  session.player.vx = 0;
+  session.player.vy = 0;
+  session.player.vz = 0;
+  session.player.onGround = false;
+}
+
+function handleFerrisCenterEnter(socket, session) {
+  const invited = FERRIS.platformGuests.includes(session.id);
+  if (!isNearFerris(session.player) && !canControlFerrisCenter(session) && !invited) {
+    send(socket, "notice", { message: "要靠近摩天輪才能上中心平台。" });
+    return;
+  }
+  if (!canControlFerrisCenter(session) && !invited) {
+    send(socket, "notice", { message: "只有鑽石最多的人，或被邀請的人可以上中心平台。" });
+    return;
+  }
+  detachFromStack(session.player);
+  stopFollowingFlight(session);
+  session.player.ride = "ferrisCenter";
+  if (!FERRIS.platformGuests.includes(session.id)) FERRIS.platformGuests.push(session.id);
+  updateFerrisCenterRider(session);
+  send(socket, "notice", { message: "你上到摩天輪中心平台。" });
+}
+
+function handleFerrisCenterLeave(socket, session) {
+  if (session.player.ride !== "ferrisCenter") return;
+  handleFerrisExit(socket, session);
+}
+
+function updateFerrisCenterRider(session) {
+  const index = Math.max(0, FERRIS.platformGuests.indexOf(session.id));
+  const offset = (index - (FERRIS.platformGuests.length - 1) / 2) * 1.2;
+  session.player.x = FERRIS.x + offset;
+  session.player.y = FERRIS.y + 1.2;
+  session.player.z = FERRIS.z + 1.8;
+  session.player.vx = 0;
+  session.player.vy = 0;
+  session.player.vz = 0;
+  session.player.onGround = false;
+}
+
+function handleFerrisCenterInvite(socket, session) {
+  if (!canControlFerrisCenter(session)) {
+    send(socket, "notice", { message: "只有目前鑽石最多的人可以邀請大家上中心平台。" });
+    return;
+  }
+  const invited = [...sessions.values()].filter((candidate) => candidate.id !== session.id && candidate.player.location === "island");
+  for (const candidate of invited) {
+    send(candidate.socket, "ferrisCenterInvite", {
+      leaderId: session.id,
+      leaderName: displayNameFor(session.account)
+    });
+  }
+  send(socket, "notice", { message: "已邀請島上的玩家上摩天輪中心平台。" });
+}
+
+function handleAcceptFerrisCenterInvite(socket, session, leaderId) {
+  const leader = sessions.get(String(leaderId || ""));
+  if (!leader || !canControlFerrisCenter(leader)) {
+    send(socket, "notice", { message: "這個中心平台邀請已經失效。" });
+    return;
+  }
+  if (session.player.location !== "island") {
+    send(socket, "notice", { message: "要在島上才能接受摩天輪邀請。" });
+    return;
+  }
+  if (!FERRIS.platformGuests.includes(session.id)) FERRIS.platformGuests.push(session.id);
+  handleFerrisCenterEnter(socket, session);
+}
+
+function handleSetFerrisIcon(socket, session, icon) {
+  if (!canControlFerrisCenter(session)) {
+    send(socket, "notice", { message: "只有目前鑽石最多的人可以更換摩天輪中心圖案。" });
+    return;
+  }
+  const allowed = new Set(["jump-cat", "cloud-cat", "play-cats", "star-cat", "diamond-cat"]);
+  if (!allowed.has(String(icon || ""))) {
+    send(socket, "notice", { message: "沒有這個中心圖案。" });
+    return;
+  }
+  FERRIS.icon = String(icon);
+  broadcast("notice", { message: `${displayNameFor(session.account)} 更換了摩天輪中心圖案。` });
 }
 
 function handleFlightInvite(socket, session) {
@@ -1056,6 +1259,11 @@ function handleEnterChallenge(socket, session) {
     if (member.player.ride === "swing") {
       SWING.riders = SWING.riders.filter((id) => id !== member.id);
       member.player.ride = null;
+    }
+    if (member.player.ride === "ferris" || member.player.ride === "ferrisCenter") {
+      FERRIS.platformGuests = FERRIS.platformGuests.filter((id) => id !== member.id);
+      member.player.ride = null;
+      member.player.ferrisSeat = null;
     }
     stopFollowingFlight(member);
     detachFromStack(member.player);

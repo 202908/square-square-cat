@@ -15,6 +15,7 @@ import {
   createAccount,
   equipItem,
   getChallengePlatforms,
+  richestDiamondAccountCode,
   isValidNewAccountCode,
   redeemCode,
   sendCoinGift,
@@ -233,4 +234,12 @@ test("level rewards can give visible inventory items", () => {
 
 test("level rewards include the level one hundred milestone", () => {
   assert.ok(LEVEL_REWARDS.some((reward) => reward.level === MAX_PLAYER_LEVEL));
+});
+
+test("richest diamond account uses diamonds and breaks ties by code", () => {
+  const a = createAccount("aaa", { diamonds: 8 });
+  const b = createAccount("bbb", { diamonds: 12 });
+  const c = createAccount("ccc", { diamonds: 12 });
+
+  assert.equal(richestDiamondAccountCode([a, b, c]), "bbb");
 });

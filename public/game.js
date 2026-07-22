@@ -13,6 +13,7 @@ const state = {
   bushMeshes: new Map(),
   houseMeshes: new Map(),
   furnitureMeshes: new Map(),
+  ferris: null,
   keys: new Set(),
   joystick: { active: false, x: 0, z: 0 },
   actionCooldowns: {},
@@ -65,6 +66,10 @@ const els = {
   slideButton: document.querySelector("#slideButton"),
   swingButton: document.querySelector("#swingButton"),
   swingPumpButton: document.querySelector("#swingPumpButton"),
+  ferrisRideButton: document.querySelector("#ferrisRideButton"),
+  ferrisCenterButton: document.querySelector("#ferrisCenterButton"),
+  ferrisIconButton: document.querySelector("#ferrisIconButton"),
+  ferrisInviteButton: document.querySelector("#ferrisInviteButton"),
   flyUpButton: document.querySelector("#flyUpButton"),
   flyDownButton: document.querySelector("#flyDownButton"),
   modal: document.querySelector("#modal"),
@@ -80,6 +85,9 @@ let island;
 let clock;
 let roomGroup;
 let swingSeatGroup;
+let ferrisWheelGroup;
+let ferrisCabinGroup;
+let ferrisIconGroup;
 let challengeStageGroup;
 let renderedChallengeLevel = null;
 
@@ -95,6 +103,13 @@ const CHALLENGE_BASE = { x: -760, y: 1.2, z: -720 };
 const MAX_PLAYER_LEVEL = 100;
 const MAX_CHALLENGE_STEP_Y = 2.8;
 const CHALLENGE_STAGE_COLORS = [0xffc5dc, 0xbfe8ff, 0xd9c7ff];
+const FERRIS_ICON_OPTIONS = [
+  ["jump-cat", "方塊貓在跳"],
+  ["cloud-cat", "方塊貓坐雲朵"],
+  ["play-cats", "兩隻方塊貓玩"],
+  ["star-cat", "星星方塊貓"],
+  ["diamond-cat", "鑽石方塊貓"]
+];
 const HOUSE_PAINT_LOOKS = {
   red: { color: 0xff5a6c },
   orange: { color: 0xff9b3d },
@@ -196,6 +211,16 @@ function bindUi() {
     send(me?.ride === "swing" ? "swingDismount" : "swingMount");
   });
   els.swingPumpButton.addEventListener("click", () => send("swingPump"));
+  els.ferrisRideButton.addEventListener("click", () => {
+    const me = state.players.get(state.myId);
+    send(me?.ride === "ferris" ? "ferrisExit" : "ferrisRide");
+  });
+  els.ferrisCenterButton.addEventListener("click", () => {
+    const me = state.players.get(state.myId);
+    send(me?.ride === "ferrisCenter" ? "ferrisCenterLeave" : "ferrisCenterEnter");
+  });
+  els.ferrisIconButton.addEventListener("click", showFerrisIconModal);
+  els.ferrisInviteButton.addEventListener("click", () => send("ferrisCenterInvite"));
 
   els.chatForm.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -239,10 +264,11 @@ function handleServerMessage(message) {
   if (message.type === "authError") showAuthError(message);
   if (message.type === "authed") handleAuthed(message);
   if (message.type === "account") updateAccount(message);
-  if (message.type === "state") updateWorldState(message.players, message.coins || [], message.houses || [], message.swing, message.bushes || []);
+  if (message.type === "state") updateWorldState(message.players, message.coins || [], message.houses || [], message.swing, message.bushes || [], message.ferris);
   if (message.type === "chat") renderChat(message.chatLog);
   if (message.type === "notice") showNotice(message.message);
   if (message.type === "flightInvite") showFlightInvite(message);
+  if (message.type === "ferrisCenterInvite") showFerrisCenterInvite(message);
 }
 
 function showAuthError(message) {
@@ -396,6 +422,7 @@ function createIsland() {
 function createPlayground() {
   addSlide(-24, 0, -20);
   addSwing(12, 0, -28);
+  addFerrisWheel(-38, 0, -52);
   addFacility(28, 0, -12, 0xbfe8ff, "shop");
   addFacility(8, 0, 22, 0xffc5dc, "box");
   addChallengeCourse();
@@ -407,6 +434,52 @@ function createPlayground() {
     post.position.set(Math.random() * 120 - 60, 2, Math.random() * 120 - 60);
     scene.add(post);
   }
+}
+
+function addFerrisWheel(x, y, z) {
+  const group = new THREE.Group();
+  const frameMaterial = new THREE.MeshStandardMaterial({ color: 0xbfe8ff, roughness: 0.5 });
+  const pink = new THREE.MeshStandardMaterial({ color: 0xffc5dc, roughness: 0.55 });
+  const yellow = new THREE.MeshStandardMaterial({ color: 0xfff1a8, roughness: 0.5 });
+
+  for (const sx of [-6, 6]) {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.7, 18, 0.7), frameMaterial);
+    leg.position.set(sx, 8.5, 0);
+    leg.rotation.z = sx < 0 ? -0.34 : 0.34;
+    group.add(leg);
+  }
+  const base = new THREE.Mesh(new THREE.BoxGeometry(18, 0.8, 5), pink);
+  base.position.set(0, 0.55, 0);
+  group.add(base);
+
+  ferrisWheelGroup = new THREE.Group();
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(9, 0.32, 12, 80), frameMaterial);
+  ferrisWheelGroup.add(ring);
+  for (let index = 0; index < 8; index += 1) {
+    const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.22, 17.5, 0.22), frameMaterial);
+    spoke.rotation.z = (index * Math.PI) / 8;
+    ferrisWheelGroup.add(spoke);
+  }
+  const hub = new THREE.Mesh(new THREE.TorusGeometry(2.1, 0.25, 12, 40), yellow);
+  ferrisWheelGroup.add(hub);
+  ferrisCabinGroup = new THREE.Group();
+  ferrisWheelGroup.add(ferrisCabinGroup);
+  ferrisIconGroup = new THREE.Group();
+  ferrisIconGroup.position.z = 0.45;
+  ferrisWheelGroup.add(ferrisIconGroup);
+  ferrisWheelGroup.position.y = 11.5;
+  group.add(ferrisWheelGroup);
+
+  const platform = new THREE.Mesh(new THREE.CylinderGeometry(4, 4, 0.45, 24), new THREE.MeshStandardMaterial({ color: 0xd9c7ff, roughness: 0.6 }));
+  platform.position.set(0, 12.7, 1.8);
+  group.add(platform);
+  const rail = new THREE.Mesh(new THREE.TorusGeometry(4.2, 0.12, 8, 40), frameMaterial);
+  rail.position.set(0, 13.45, 1.8);
+  rail.rotation.x = Math.PI / 2;
+  group.add(rail);
+
+  group.position.set(x, y, z);
+  scene.add(group);
 }
 
 function addFacility(x, y, z, color, kind) {
@@ -544,7 +617,8 @@ function createRoom() {
   scene.add(roomGroup);
 }
 
-function updateWorldState(players, coins, houses = [], swing, bushes = []) {
+function updateWorldState(players, coins, houses = [], swing, bushes = [], ferris = null) {
+  state.ferris = ferris || state.ferris;
   const ids = new Set(players.map((player) => player.id));
   for (const [id, mesh] of state.meshes) {
     if (!ids.has(id)) {
@@ -567,6 +641,7 @@ function updateWorldState(players, coins, houses = [], swing, bushes = []) {
   updateBushMeshes(bushes);
   updateHouseMeshes(houses);
   updateSwingMesh(swing);
+  updateFerrisMesh(state.ferris);
   const me = state.players.get(state.myId);
   updateChallengeStage(me?.challengeLevel || state.account?.level || 1);
   if (!els.modal.classList.contains("hidden") && els.modalTitle.textContent === "在線玩家") {
@@ -587,6 +662,10 @@ function updateActionButtons(me, houses, bushes = []) {
   const ownHouse = houses.find((house) => house.owner === state.account?.code);
   const nearHouse = ownHouse && Math.hypot(ownHouse.x - me.x, ownHouse.z - me.z) < 6;
   const nearSwing = Math.hypot(12 - me.x, -28 - me.z) < 7;
+  const ferris = state.ferris;
+  const nearFerris = me.location === "island" && ferris && Math.hypot(ferris.x - me.x, ferris.z - me.z) < 13;
+  const controlsFerris = state.account?.code && ferris?.richestCode === state.account.code;
+  const canUseFerrisCenter = controlsFerris || me.ride === "ferrisCenter" || ferris?.platformGuests?.includes(state.myId);
   const nearSlideTop = me.location === "island" && Math.hypot(me.x + 28, me.z + 20) < 5.5 && me.y > 4.6;
   const nearBush = Boolean(nearestBush(me, bushes));
   const canUseStack = nearPlayer || Boolean(me.carrying) || Boolean(me.carriedBy);
@@ -600,6 +679,12 @@ function updateActionButtons(me, houses, bushes = []) {
   els.slideButton.classList.toggle("hidden", !nearSlideTop);
   els.swingButton.classList.toggle("hidden", !(me.ride === "swing" || (me.location === "island" && nearSwing)));
   els.swingPumpButton.classList.toggle("hidden", me.ride !== "swing");
+  els.ferrisRideButton.textContent = me.ride === "ferris" ? "離開摩天輪" : "進入摩天輪";
+  els.ferrisRideButton.classList.toggle("hidden", !(me.ride === "ferris" || nearFerris));
+  els.ferrisCenterButton.textContent = me.ride === "ferrisCenter" ? "離開平台" : "上中心平台";
+  els.ferrisCenterButton.classList.toggle("hidden", !(nearFerris && canUseFerrisCenter));
+  els.ferrisIconButton.classList.toggle("hidden", !(nearFerris && controlsFerris));
+  els.ferrisInviteButton.classList.toggle("hidden", !(nearFerris && controlsFerris));
 }
 
 function nearestBush(me, bushes = null) {
@@ -1057,6 +1142,77 @@ function updateSwingMesh(swing) {
   swingSeatGroup.rotation.z = swing.angle || 0;
 }
 
+function updateFerrisMesh(ferris) {
+  if (!ferrisWheelGroup || !ferris) return;
+  ferrisWheelGroup.rotation.z = ferris.angle || 0;
+  ferrisIconGroup.rotation.z = -(ferris.angle || 0);
+  ferrisCabinGroup.clear();
+  const cabinMaterial = new THREE.MeshStandardMaterial({ color: 0xffc5dc, roughness: 0.55 });
+  const roofMaterial = new THREE.MeshStandardMaterial({ color: 0xbfe8ff, roughness: 0.5 });
+  for (let index = 0; index < ferris.seats; index += 1) {
+    const angle = (index * Math.PI * 2) / ferris.seats;
+    const cabin = new THREE.Group();
+    cabin.position.set(Math.sin(angle) * ferris.radius, -Math.cos(angle) * ferris.radius, 0);
+    cabin.rotation.z = -(ferris.angle || 0);
+    const box = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.4, 2), cabinMaterial);
+    cabin.add(box);
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(1.55, 0.8, 4), roofMaterial);
+    roof.position.y = 0.95;
+    roof.rotation.y = Math.PI / 4;
+    cabin.add(roof);
+    ferrisCabinGroup.add(cabin);
+  }
+  updateFerrisIcon(ferris.icon || "jump-cat");
+}
+
+function updateFerrisIcon(icon) {
+  if (!ferrisIconGroup) return;
+  ferrisIconGroup.clear();
+  const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.55 });
+  const accentMaterial = new THREE.MeshStandardMaterial({ color: 0xffc5dc, roughness: 0.55 });
+  const blueMaterial = new THREE.MeshStandardMaterial({ color: 0xbfe8ff, roughness: 0.55 });
+  const addMiniCat = (x, y, color = bodyMaterial) => {
+    const cat = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.58, 0.2), color);
+    cat.add(body);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.42, 0.2), color);
+    head.position.y = 0.5;
+    cat.add(head);
+    [-0.2, 0.2].forEach((earX) => {
+      const ear = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.2, 4), color);
+      ear.position.set(earX, 0.8, 0);
+      ear.rotation.y = Math.PI / 4;
+      cat.add(ear);
+    });
+    cat.position.set(x, y, 0);
+    ferrisIconGroup.add(cat);
+    return cat;
+  };
+  if (icon === "cloud-cat") {
+    const cloud = new THREE.Mesh(new THREE.SphereGeometry(0.9, 18, 10), blueMaterial);
+    cloud.scale.set(1.6, 0.45, 0.25);
+    cloud.position.y = -0.45;
+    ferrisIconGroup.add(cloud);
+    addMiniCat(0, 0.15);
+  } else if (icon === "play-cats") {
+    addMiniCat(-0.55, -0.05, bodyMaterial).rotation.z = -0.18;
+    addMiniCat(0.55, -0.05, accentMaterial).rotation.z = 0.18;
+  } else if (icon === "star-cat") {
+    const star = new THREE.Mesh(new THREE.CircleGeometry(1, 5), new THREE.MeshStandardMaterial({ color: 0xfff1a8, roughness: 0.45 }));
+    star.rotation.z = Math.PI / 5;
+    ferrisIconGroup.add(star);
+    addMiniCat(0, 0.05);
+  } else if (icon === "diamond-cat") {
+    const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.9), new THREE.MeshStandardMaterial({ color: 0x8ed7ff, roughness: 0.35 }));
+    gem.scale.z = 0.2;
+    ferrisIconGroup.add(gem);
+    addMiniCat(0, 0.05, accentMaterial);
+  } else {
+    const cat = addMiniCat(0, 0.05);
+    cat.rotation.z = -0.35;
+  }
+}
+
 function getChallengePlatforms(level = 1) {
   const difficulty = clampChallengeLevel(level);
   const start = challengeStartForLevel(difficulty);
@@ -1489,6 +1645,21 @@ function showLevelRewardsModal() {
   });
 }
 
+function showFerrisIconModal() {
+  openModal("摩天輪中心圖案", `<div class="list">${FERRIS_ICON_OPTIONS.map(([id, label]) => `
+    <div class="list-item">
+      <div class="split">
+        <strong>${label}</strong>
+        <span>${state.ferris?.icon === id ? "使用中" : "可更換"}</span>
+      </div>
+      <button data-ferris-icon="${id}">設定</button>
+    </div>
+  `).join("")}</div>`);
+  document.querySelectorAll("[data-ferris-icon]").forEach((button) => {
+    button.addEventListener("click", () => send("setFerrisIcon", { icon: button.dataset.ferrisIcon }));
+  });
+}
+
 function levelRewardText(reward) {
   const parts = [`${Number(reward.coins || 0)} 金幣`];
   if (Number(reward.diamonds || 0) > 0) parts.push(`${reward.diamonds} 鑽石`);
@@ -1777,6 +1948,21 @@ function showFlightInvite(message) {
   `;
   item.querySelector("button").addEventListener("click", () => {
     send("acceptFlightInvite", { leaderId: message.leaderId });
+    item.remove();
+  });
+  els.chatLog.append(item);
+  els.chatLog.scrollTop = els.chatLog.scrollHeight;
+}
+
+function showFerrisCenterInvite(message) {
+  const item = document.createElement("div");
+  item.className = "invite-message";
+  item.innerHTML = `
+    <span><strong>${escapeHtml(message.leaderName)}</strong> 邀請你上摩天輪中心平台。</span>
+    <button type="button" class="primary-button">進入</button>
+  `;
+  item.querySelector("button").addEventListener("click", () => {
+    send("acceptFerrisCenterInvite", { leaderId: message.leaderId });
     item.remove();
   });
   els.chatLog.append(item);
