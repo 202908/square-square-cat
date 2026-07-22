@@ -20,6 +20,8 @@ const state = {
   totalAccounts: 0,
   lastFacilityNotice: null,
   facilityNoticeAfter: 0,
+  cameraYaw: 0,
+  cameraDrag: { active: false, pointerId: null, x: 0 },
   keys: new Set(),
   joystick: { active: false, x: 0, z: 0 },
   actionCooldowns: {},
@@ -267,6 +269,7 @@ function bindUi() {
   });
 
   bindJoystick();
+  bindCameraDrag();
   holdButton(els.jumpButton, () => (state.jump = true), () => (state.jump = false));
   holdButton(els.flyUpButton, () => (state.flyY = 1), () => (state.flyY = 0));
   holdButton(els.flyDownButton, () => (state.flyY = -1), () => (state.flyY = 0));
@@ -315,6 +318,32 @@ function bindUi() {
   els.onlinePlayersButton.addEventListener("click", showOnlinePlayersModal);
   els.adminButton.addEventListener("click", showAdminModal);
   els.closeModal.addEventListener("click", closeModal);
+}
+
+function bindCameraDrag() {
+  els.canvas.addEventListener("pointerdown", (event) => {
+    if (event.button !== undefined && event.button !== 0) return;
+    state.cameraDrag = { active: true, pointerId: event.pointerId, x: event.clientX };
+    els.canvas.setPointerCapture(event.pointerId);
+    els.canvas.classList.add("dragging-camera");
+  });
+  els.canvas.addEventListener("pointermove", (event) => {
+    if (!state.cameraDrag.active || state.cameraDrag.pointerId !== event.pointerId) return;
+    const dx = event.clientX - state.cameraDrag.x;
+    state.cameraDrag.x = event.clientX;
+    state.cameraYaw -= dx * 0.008;
+  });
+  const endDrag = (event) => {
+    if (state.cameraDrag.pointerId !== event.pointerId) return;
+    state.cameraDrag = { active: false, pointerId: null, x: 0 };
+    els.canvas.classList.remove("dragging-camera");
+  };
+  els.canvas.addEventListener("pointerup", endDrag);
+  els.canvas.addEventListener("pointercancel", endDrag);
+  els.canvas.addEventListener("lostpointercapture", () => {
+    state.cameraDrag = { active: false, pointerId: null, x: 0 };
+    els.canvas.classList.remove("dragging-camera");
+  });
 }
 
 function showScreen(name) {
@@ -1845,7 +1874,13 @@ function animate() {
   clock.getDelta();
   const me = state.players.get(state.myId);
   if (me) {
-    const target = new THREE.Vector3(me.x - 9, me.y + 8, me.z + 13);
+    const distance = 15.8;
+    const baseYaw = -0.6 + state.cameraYaw;
+    const target = new THREE.Vector3(
+      me.x + Math.sin(baseYaw) * distance,
+      me.y + 8,
+      me.z + Math.cos(baseYaw) * distance
+    );
     camera.position.lerp(target, 0.08);
     camera.lookAt(me.x, me.y + 1, me.z);
   } else {
