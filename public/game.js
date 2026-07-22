@@ -194,7 +194,7 @@ function bindUi() {
     }
     if (event.repeat) return;
     if (event.code === "KeyE") sendAction("stack");
-    if (event.code === "KeyF") sendAction("attack");
+    if (event.code === "KeyM") sendAction("attack");
   });
   window.addEventListener("keyup", (event) => {
     state.keys.delete(event.code);
@@ -1442,7 +1442,7 @@ function updateChallengeStage(level = 1) {
 function updateCatMesh(mesh, player) {
   mesh.position.set(player.x, player.y, player.z);
   mesh.rotation.y = player.yaw;
-  const baseScale = player.survivalMode === "adult" ? 2 : 1;
+  const baseScale = player.survivalMode === "adult" ? 1.15 : 1;
   mesh.scale.setScalar(baseScale * (player.id === state.myId ? 1.12 : 1));
   if (mesh.userData.tail) {
     updateTailMesh(mesh.userData.tail, player.equipped?.tail);
@@ -1578,7 +1578,7 @@ function updatePetMesh(group, player) {
   if (!petId || player.location === "challenge") return;
   const palette = catPalette(player.catVariant);
   const material = new THREE.MeshStandardMaterial({ color: palette.body, roughness: 0.58 });
-  const faceMaterial = new THREE.MeshBasicMaterial({ color: palette.face });
+  const faceMaterial = new THREE.MeshBasicMaterial({ color: palette.body });
   const eyeMaterial = new THREE.MeshBasicMaterial({ color: 0x1f2630 });
   const mouthMaterial = new THREE.MeshBasicMaterial({ color: 0xff6f9f });
   const bob = Math.sin(Date.now() * 0.004) * 0.12;
@@ -1591,6 +1591,16 @@ function updatePetMesh(group, player) {
   const face = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.2), faceMaterial);
   face.position.set(-1.45, 0.95 + bob, -1.47);
   group.add(face);
+  if (player.catVariant === "calico") {
+    const patchMaterialA = new THREE.MeshBasicMaterial({ color: 0x2c231f, transparent: true, opacity: 0.92 });
+    const patchMaterialB = new THREE.MeshBasicMaterial({ color: 0xd77a2d, transparent: true, opacity: 0.92 });
+    const patchA = new THREE.Mesh(new THREE.PlaneGeometry(0.12, 0.11), patchMaterialA);
+    patchA.position.set(-1.55, 1.02 + bob, -1.462);
+    group.add(patchA);
+    const patchB = new THREE.Mesh(new THREE.PlaneGeometry(0.12, 0.1), patchMaterialB);
+    patchB.position.set(-1.35, 0.93 + bob, -1.462);
+    group.add(patchB);
+  }
   [-0.09, 0.09].forEach((x) => {
     const eye = new THREE.Mesh(new THREE.CircleGeometry(0.035, 16), eyeMaterial);
     eye.position.set(-1.45 + x, 1 + bob, -1.465);
