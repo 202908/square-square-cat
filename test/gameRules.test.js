@@ -5,6 +5,7 @@ import {
   DEFAULT_TITLE_ID,
   DEFAULT_TITLES,
   LEVEL_REWARDS,
+  LEVEL_TASKS,
   MAX_CHALLENGE_STEP_Y,
   MAX_PLAYER_LEVEL,
   SHOP_ITEMS,
@@ -19,6 +20,7 @@ import {
   damageAdultThirst,
   equipItem,
   getChallengePlatforms,
+  levelTaskProgress,
   updateSurvivalStats,
   damageMonster,
   richestDiamondAccountCode,
@@ -214,13 +216,36 @@ test("challenge level uses the lowest player level in a team", () => {
   assert.equal(challengeLevelForAccounts([createAccount("over", { level: 140 })]), MAX_PLAYER_LEVEL);
 });
 
-test("completing a challenge gives coins and raises level", () => {
-  const account = createAccount("abc", { level: 4, coins: 20 });
+test("level tasks cover every upgrade through level one hundred", () => {
+  assert.equal(LEVEL_TASKS.length, MAX_PLAYER_LEVEL - 1);
+  assert.equal(LEVEL_TASKS[0].level, 1);
+  assert.equal(LEVEL_TASKS.at(-1).nextLevel, MAX_PLAYER_LEVEL);
+  assert.equal(LEVEL_TASKS.every((task) => task.challengeTarget === task.level), true);
+});
+
+test("completing a challenge gives coins but waits for the level task", () => {
+  const account = createAccount("abc", { level: 1, coins: 20 });
   const result = completeChallenge(account);
 
   assert.equal(result.ok, true);
   assert.equal(result.account.coins, 520);
-  assert.equal(result.account.level, 5);
+  assert.equal(result.account.level, 1);
+  assert.equal(result.account.achievements.challengeCompletions, 1);
+  assert.equal(levelTaskProgress(result.account).complete, false);
+});
+
+test("completing a challenge raises level when the extra task is done", () => {
+  const account = createAccount("abc", {
+    level: 1,
+    coins: 20,
+    achievements: { ferrisRides: 1 }
+  });
+  const result = completeChallenge(account);
+
+  assert.equal(result.ok, true);
+  assert.equal(result.account.coins, 520);
+  assert.equal(result.account.level, 2);
+  assert.equal(result.levelAdded, 1);
 });
 
 test("player level caps at the maximum challenge level", () => {
@@ -277,7 +302,9 @@ test("level rewards can give visible inventory items", () => {
   assert.equal(result.account.inventory.includes("cat-pet"), true);
 });
 
-test("level rewards include the level one hundred milestone", () => {
+test("level rewards include every level from two through one hundred", () => {
+  assert.equal(LEVEL_REWARDS.length, MAX_PLAYER_LEVEL - 1);
+  assert.deepEqual(LEVEL_REWARDS.map((reward) => reward.level), Array.from({ length: MAX_PLAYER_LEVEL - 1 }, (_, index) => index + 2));
   assert.ok(LEVEL_REWARDS.some((reward) => reward.level === MAX_PLAYER_LEVEL));
 });
 

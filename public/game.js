@@ -6,6 +6,7 @@ const state = {
   account: null,
   shopItems: [],
   levelRewards: [],
+  levelTasks: [],
   coinCodes: {},
   titleCatalog: {},
   titleColors: {},
@@ -373,6 +374,7 @@ function updateAccount(message) {
   state.account = message.account;
   state.shopItems = message.shopItems || state.shopItems;
   state.levelRewards = message.levelRewards || state.levelRewards;
+  state.levelTasks = message.levelTasks || state.levelTasks;
   state.coinCodes = message.coinCodes || state.coinCodes;
   state.titleCatalog = message.titleCatalog || state.titleCatalog;
   state.titleColors = message.titleColors || state.titleColors;
@@ -391,7 +393,7 @@ function updateAccount(message) {
   if (!els.modal.classList.contains("hidden") && els.modalTitle.textContent === "好友") {
     showFriendsModal();
   }
-  if (!els.modal.classList.contains("hidden") && els.modalTitle.textContent === "等級獎勵") {
+  if (!els.modal.classList.contains("hidden") && els.modalTitle.textContent === "等級任務與獎勵") {
     showLevelRewardsModal();
   }
   if (!els.modal.classList.contains("hidden") && els.modalTitle.textContent === "新增 Password") {
@@ -2148,7 +2150,31 @@ function showLevelRewardsModal() {
   const rewards = state.levelRewards || [];
   const level = Number(state.account?.level || 1);
   const claimed = new Set(state.account?.claimedLevelRewards || []);
-  openModal("等級獎勵", rewards.length ? `<div class="list">${rewards.map((reward) => {
+  const currentTask = currentLevelTask();
+  const taskProgress = currentTask ? levelTaskStatus(currentTask) : null;
+  const taskText = state.account?.isHost
+    ? "主機是無限資源，不需要升級任務。"
+    : level >= MAX_PLAYER_LEVEL
+      ? "已經 100 級，滿級了。"
+      : taskProgress?.complete
+        ? "這一級任務都完成了，再完成一次闖關就可以往前。"
+        : taskProgress?.missingText || "完成闖關和這一級任務就可以升級。";
+  openModal("等級任務與獎勵", `
+    <div class="level-reward-screen">
+      <section class="level-task-banner">
+        <div>
+          <span class="eyebrow">下一級任務</span>
+          <h3>${state.account?.isHost ? "主機帳號" : `Lv. ${level} → Lv. ${Math.min(MAX_PLAYER_LEVEL, level + 1)}`}</h3>
+          <p>${escapeHtml(taskText)}</p>
+        </div>
+        ${currentTask && !state.account?.isHost ? `
+          <div class="task-progress-pair">
+            <span>闖關 ${taskProgress.challengeValue}/${currentTask.challengeTarget}</span>
+            <span>${escapeHtml(currentTask.action)} ${taskProgress.actionValue}/${currentTask.target}${escapeHtml(currentTask.unit)}</span>
+          </div>
+        ` : ""}
+      </section>
+      ${rewards.length ? `<div class="level-reward-grid">${rewards.map((reward) => {
     const canClaim = !state.account?.isHost && level >= reward.level && !claimed.has(reward.level);
     const status = state.account?.isHost
       ? "主機是無限資源"
@@ -2157,8 +2183,9 @@ function showLevelRewardsModal() {
         : level >= reward.level
           ? "可以領"
           : `還差 ${reward.level - level} 級`;
+    const cellClass = canClaim ? "level-reward-card claimable" : claimed.has(reward.level) ? "level-reward-card claimed" : "level-reward-card";
     return `
-      <div class="list-item">
+      <div class="${cellClass}">
         <div class="split">
           <strong>Lv. ${reward.level}</strong>
           <span>${status}</span>
@@ -2167,7 +2194,9 @@ function showLevelRewardsModal() {
         <button ${canClaim ? "" : "disabled"} data-claim-level="${reward.level}">領取</button>
       </div>
     `;
-  }).join("")}</div>` : "<p>現在還沒有等級獎勵。</p>");
+  }).join("")}</div>` : "<p>現在還沒有等級獎勵。</p>"}
+    </div>
+  `, "level-rewards-modal");
   document.querySelectorAll("[data-claim-level]").forEach((button) => {
     button.addEventListener("click", () => send("claimLevelReward", { level: Number(button.dataset.claimLevel) }));
   });
@@ -2249,6 +2278,26 @@ function levelRewardText(reward) {
   if (Number(reward.diamonds || 0) > 0) parts.push(`${reward.diamonds} 鑽石`);
   if (reward.itemName) parts.push(reward.itemName);
   return parts.join("、");
+}
+
+function currentLevelTask() {
+  const level = Number(state.account?.level || 1);
+  return (state.levelTasks || []).find((task) => Number(task.level) === level) || null;
+}
+
+function levelTaskStatus(task) {
+  const achievements = state.account?.achievements || {};
+  const challengeValue = Number(achievements.challengeCompletions || 0);
+  const actionValue = Number(achievements[task.metric] || 0);
+  const missing = [];
+  if (challengeValue < task.challengeTarget) missing.push(`還要闖關 ${task.challengeTarget - challengeValue} 次`);
+  if (actionValue < task.target) missing.push(`${task.action}還差 ${task.target - actionValue}${task.unit}`);
+  return {
+    challengeValue,
+    actionValue,
+    complete: missing.length === 0,
+    missingText: missing.join("，")
+  };
 }
 
 function priceText(item) {
@@ -2596,14 +2645,16 @@ function titleColorName(id, value) {
   }[id] || value || id;
 }
 
-function openModal(title, body) {
+function openModal(title, body, className = "") {
   els.modalTitle.textContent = title;
   els.modalBody.innerHTML = body;
+  els.modal.classList.toggle("level-rewards-modal", className === "level-rewards-modal");
   els.modal.classList.remove("hidden");
 }
 
 function closeModal() {
   els.modal.classList.add("hidden");
+  els.modal.classList.remove("level-rewards-modal");
 }
 
 function renderChat(chatLog) {

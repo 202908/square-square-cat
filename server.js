@@ -12,6 +12,7 @@ import {
   HOST_CODE,
   HOST_PASSWORD,
   LEVEL_REWARDS,
+  LEVEL_TASKS,
   SHOP_ITEMS,
   TITLE_COLORS,
   addFriend,
@@ -34,7 +35,8 @@ import {
   richestDiamondAccountCode,
   sendCoinGift,
   sendDiamondGift,
-  updateSurvivalStats
+  updateSurvivalStats,
+  withAchievementDefaults
 } from "./src/gameRules.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -161,13 +163,7 @@ async function loadData() {
         account.titles = account.isHost ? [DEFAULT_TITLE_ID, "host-cat"] : [DEFAULT_TITLE_ID];
         changedAccounts = true;
       }
-      account.achievements ||= {};
-      account.achievements.ferrisRides ??= 0;
-      account.achievements.swingRides ??= 0;
-      account.achievements.slideRides ??= 0;
-      account.achievements.monstersDefeated ??= 0;
-      account.achievements.coinPacksOpened ??= 0;
-      account.achievements.chatMessages ??= 0;
+      account.achievements = withAchievementDefaults(account).achievements;
       if (!account.titles.includes(DEFAULT_TITLE_ID)) {
         account.titles.unshift(DEFAULT_TITLE_ID);
         changedAccounts = true;
@@ -306,7 +302,7 @@ function handleMessage(socket, message) {
       handleRedeem(socket, session, message.code);
       break;
     case "buy":
-      updateAccount(socket, session, buyItem(session.account, message.itemId));
+      handleBuy(socket, session, message.itemId);
       break;
     case "claimLevelReward":
       updateAccount(socket, session, claimLevelReward(session.account, message.level));
@@ -671,6 +667,7 @@ function updatePlayer(session, dt) {
   player.z = clamp(player.z, -limit, limit);
   player.y = clamp(player.y, floorY, 60);
   collectNearbyCoins(session);
+  trackRiverStay(session, dt);
 }
 
 function updateSurvivalWorld(dt) {
@@ -1288,7 +1285,9 @@ function handleAddFriend(socket, session, friendCode) {
     send(socket, "notice", { message: "找不到這個好友帳號。" });
     return;
   }
-  updateAccount(socket, session, addFriend(session.account, friendCode));
+  const result = addFriend(session.account, friendCode);
+  updateAccount(socket, session, result);
+  if (result.ok) incrementAchievement(session, "friendsAdded");
 }
 
 function handleSendGift(socket, session, friendCode, itemId) {
@@ -1571,9 +1570,15 @@ function completeChallengeForTeam(session) {
     broadcast("notice", {
       message: result.levelAdded
         ? `${displayNameFor(member.account)} 闖關成功，加了 ${result.coinsAdded} 金幣和 ${result.levelAdded} 級。`
-        : `${displayNameFor(member.account)} 闖關成功。`
+        : `${displayNameFor(member.account)} ${result.message}`
     });
   }
+}
+
+function handleBuy(socket, session, itemId) {
+  const result = buyItem(session.account, itemId);
+  updateAccount(socket, session, result);
+  if (result.ok) incrementAchievement(session, "itemsBought");
 }
 
 function handlePlaceHouse(socket, session) {
@@ -1586,6 +1591,7 @@ function handlePlaceHouse(socket, session) {
   const x = clamp(player.x + Math.sin(player.yaw) * distance, -88, 88);
   const z = clamp(player.z + Math.cos(player.yaw) * distance, -88, 88);
   session.account.house = { x, y: islandHeight(x, z), z, yaw: player.yaw, paint: session.account.house?.paint || {} };
+  incrementAchievement(session, "housesPlaced");
   persistSessionAccount(session);
   send(socket, "account", { account: session.account, shopItems: SHOP_ITEMS, coinCodes: session.account.isHost ? coinCodes : undefined });
   broadcast("notice", { message: `${displayNameFor(session.account)} 在島上蓋了一棟小貓房子。` });
@@ -1642,6 +1648,7 @@ function handlePlaceFurniture(socket, session, itemId) {
     z: clamp(session.player.z + Math.cos(session.player.yaw) * 3, -24, 24)
   });
   session.account.inventory.splice(session.account.inventory.indexOf(itemId), 1);
+  incrementAchievement(session, "furniturePlaced");
   persistSessionAccount(session);
   send(socket, "account", { account: session.account, shopItems: SHOP_ITEMS, coinCodes: session.account.isHost ? coinCodes : undefined });
   send(socket, "notice", { message: "家具已擺到房間裡。" });
@@ -1675,6 +1682,7 @@ function sendAccount(socket, account) {
     account,
     shopItems: SHOP_ITEMS,
     levelRewards: LEVEL_REWARDS,
+    levelTasks: LEVEL_TASKS,
     titleCatalog,
     titleColors: TITLE_COLORS,
     titlePlayers: account.isHost ? titlePlayers() : undefined,
@@ -1835,11 +1843,12 @@ function updateTitleAchievements(session) {
   if (achievements.chatMessages >= 10) grantTitle(session, "chat-king");
 }
 
-function incrementAchievement(session, key) {
+function incrementAchievement(session, key, amount = 1) {
   session.account.achievements ||= {};
-  session.account.achievements[key] = Number(session.account.achievements[key] || 0) + 1;
+  session.account.achievements[key] = Number(session.account.achievements[key] || 0) + amount;
   persistSessionAccount(session);
   updateTitleAchievements(session);
+  sendAccount(session.socket, session.account);
 }
 
 function addChat(session, rawText) {
@@ -1909,6 +1918,7 @@ function collectNearbyCoins(session) {
     if (distance < 1.8 && Math.abs(session.player.y - coin.y) < 3) {
       coin.taken = true;
       session.account.coins += 1;
+      incrementAchievement(session, "coinsCollected");
       if (session.persistent) {
         accounts[session.account.code] = session.account;
         saveAccounts();
@@ -1946,6 +1956,19 @@ function drinkFromRiver(session) {
     session.player.riverNoticeAfter = Date.now() + 4000;
   }
   persistSessionAccount(session);
+}
+
+function trackRiverStay(session, dt) {
+  if (session.player.location !== "island" || !isInRiver(session.player)) {
+    session.player.riverTaskSeconds = 0;
+    return;
+  }
+  session.player.riverTaskSeconds = Number(session.player.riverTaskSeconds || 0) + dt;
+  if (session.player.riverTaskSeconds >= 10) {
+    session.player.riverTaskSeconds -= 10;
+    incrementAchievement(session, "riverStays10s");
+    send(session.socket, "notice", { message: "溪流停留任務進度 +1。" });
+  }
 }
 
 function handleHazardHits(session) {
@@ -2006,15 +2029,14 @@ function handleSearchBush(socket, session, bushId) {
   }
 
   bush.searched = true;
+  incrementAchievement(session, "bushesSearched");
   const foundDiamond = Math.random() < 0.42;
   if (foundDiamond) {
     session.account.diamonds = Number(session.account.diamonds || 0) + 1;
-    if (!session.account.isHost) {
-      session.account.level = Math.max(1, Number(session.account.level || 1)) + 1;
-    }
+    incrementAchievement(session, "diamondsFound");
     persistSessionAccount(session);
     send(socket, "account", { account: session.account, shopItems: SHOP_ITEMS, coinCodes: session.account.isHost ? coinCodes : undefined });
-    send(socket, "notice", { message: session.account.isHost ? "翻開草叢，找到 1 顆鑽石。" : `翻開草叢，找到 1 顆鑽石，升到 Lv. ${session.account.level}。` });
+    send(socket, "notice", { message: "翻開草叢，找到 1 顆鑽石。" });
   } else {
     send(socket, "notice", { message: "翻開草叢，這次沒有找到鑽石。" });
   }

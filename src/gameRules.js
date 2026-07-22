@@ -259,24 +259,91 @@ export const SHOP_ITEMS = [
   return item;
 });
 
-export const LEVEL_REWARDS = [
-  { level: 2, coins: 120, diamonds: 0, itemId: null },
-  { level: 3, coins: 180, diamonds: 0, itemId: null },
-  { level: 5, coins: 320, diamonds: 1, itemId: null },
-  { level: 7, coins: 420, diamonds: 1, itemId: "star-hat" },
-  { level: 10, coins: 700, diamonds: 2, itemId: "cat-pet" },
-  { level: 15, coins: 1200, diamonds: 3, itemId: "rainbow-trail" },
-  { level: 20, coins: 1800, diamonds: 5, itemId: "mini-wings" },
-  { level: 25, coins: 2600, diamonds: 8, itemId: "house-body-paint-starry-night" },
-  { level: 30, coins: 3200, diamonds: 10, itemId: "angel-wings" },
-  { level: 40, coins: 4500, diamonds: 14, itemId: "crystal-trail" },
-  { level: 50, coins: 6000, diamonds: 18, itemId: "crystal-pet" },
-  { level: 75, coins: 9000, diamonds: 25, itemId: "house-roof-paint-starry-night" },
-  { level: 100, coins: 15000, diamonds: 40, itemId: "crown-hat" }
-].map((reward) => {
+const LEVEL_REWARD_ITEMS = {
+  7: "star-hat",
+  10: "cat-pet",
+  15: "rainbow-trail",
+  20: "mini-wings",
+  25: "house-body-paint-starry-night",
+  30: "angel-wings",
+  40: "crystal-trail",
+  50: "crystal-pet",
+  75: "house-roof-paint-starry-night",
+  100: "crown-hat"
+};
+
+export const LEVEL_REWARDS = Array.from({ length: MAX_PLAYER_LEVEL - 1 }, (_, index) => {
+  const level = index + 2;
+  return {
+    level,
+    coins: 80 + level * 45 + (level % 10 === 0 ? level * 20 : 0),
+    diamonds: level % 10 === 0 ? Math.ceil(level / 5) : level % 5 === 0 ? Math.ceil(level / 10) : 0,
+    itemId: LEVEL_REWARD_ITEMS[level] || null
+  };
+}).map((reward) => {
   const item = reward.itemId ? SHOP_ITEMS.find((candidate) => candidate.id === reward.itemId) : null;
   return { ...reward, itemName: item?.name || null };
 });
+
+const LEVEL_TASK_PATTERNS = [
+  { metric: "ferrisRides", action: "搭摩天輪", unit: "次", baseTarget: 1, every: 12 },
+  { metric: "slideRides", action: "溜溜滑梯", unit: "次", baseTarget: 1, every: 10 },
+  { metric: "swingRides", action: "盪鞦韆", unit: "次", baseTarget: 1, every: 10 },
+  { metric: "riverStays10s", action: "在溪流裡停留滿 10 秒", unit: "次", baseTarget: 1, every: 9 },
+  { metric: "diamondsFound", action: "翻草叢找到鑽石", unit: "顆", baseTarget: 1, every: 8 },
+  { metric: "coinsCollected", action: "在島上撿金幣", unit: "枚", baseTarget: 8, every: 5 },
+  { metric: "bushesSearched", action: "翻開草叢", unit: "次", baseTarget: 2, every: 4 },
+  { metric: "itemsBought", action: "在商城買東西", unit: "樣", baseTarget: 1, every: 12 },
+  { metric: "furniturePlaced", action: "在房間擺家具", unit: "樣", baseTarget: 1, every: 8 },
+  { metric: "housesPlaced", action: "在島上蓋房子", unit: "次", baseTarget: 1, every: 25 },
+  { metric: "friendsAdded", action: "加好友", unit: "位", baseTarget: 1, every: 18 },
+  { metric: "chatMessages", action: "在聊天區留言", unit: "次", baseTarget: 2, every: 4 },
+  { metric: "coinPacksOpened", action: "解開金幣代碼", unit: "次", baseTarget: 1, every: 20 }
+];
+
+export const LEVEL_TASKS = Array.from({ length: MAX_PLAYER_LEVEL - 1 }, (_, index) => {
+  const level = index + 1;
+  const pattern = LEVEL_TASK_PATTERNS[index % LEVEL_TASK_PATTERNS.length];
+  const cycle = Math.floor(index / LEVEL_TASK_PATTERNS.length);
+  const target = pattern.baseTarget + cycle * pattern.every;
+  return {
+    level,
+    nextLevel: level + 1,
+    challengeTarget: level,
+    metric: pattern.metric,
+    target,
+    action: pattern.action,
+    unit: pattern.unit,
+    description: `完成第 ${level} 次闖關，並且${pattern.action}累積 ${target}${pattern.unit}`
+  };
+});
+
+const ACHIEVEMENT_DEFAULTS = {
+  challengeCompletions: 0,
+  ferrisRides: 0,
+  swingRides: 0,
+  slideRides: 0,
+  monstersDefeated: 0,
+  coinPacksOpened: 0,
+  chatMessages: 0,
+  riverStays10s: 0,
+  diamondsFound: 0,
+  coinsCollected: 0,
+  bushesSearched: 0,
+  itemsBought: 0,
+  furniturePlaced: 0,
+  housesPlaced: 0,
+  friendsAdded: 0
+};
+
+export function withAchievementDefaults(account) {
+  const nextAccount = structuredClone(account);
+  nextAccount.achievements = {
+    ...ACHIEVEMENT_DEFAULTS,
+    ...(nextAccount.achievements || {})
+  };
+  return nextAccount;
+}
 
 function loadLocalEnv() {
   if ((process.env.HOST_ACCOUNT_CODE && process.env.HOST_PASSWORD) || !existsSync(".env")) return;
@@ -322,14 +389,7 @@ export function createAccount(code, overrides = {}) {
       title: isHost ? "host-cat" : DEFAULT_TITLE_ID
     },
     titles: isHost ? [DEFAULT_TITLE_ID, "host-cat"] : [DEFAULT_TITLE_ID],
-    achievements: {
-      ferrisRides: 0,
-      swingRides: 0,
-      slideRides: 0,
-      monstersDefeated: 0,
-      coinPacksOpened: 0,
-      chatMessages: 0
-    },
+    achievements: { ...ACHIEVEMENT_DEFAULTS },
     house: null,
     roomItems: [],
     giftInbox: [],
@@ -551,10 +611,13 @@ export function completeChallenge(account, rewardCoins = 500) {
   if (account.isHost) {
     return { ok: true, account: structuredClone(account), coinsAdded: 0, levelAdded: 0, message: "主機完成闖關。" };
   }
-  const nextAccount = structuredClone(account);
+  const nextAccount = withAchievementDefaults(account);
   const previousLevel = clampChallengeLevel(nextAccount.level || 1);
-  const nextLevel = Math.min(MAX_PLAYER_LEVEL, previousLevel + 1);
+  nextAccount.achievements.challengeCompletions += 1;
   nextAccount.coins += rewardCoins;
+  const task = levelTaskForLevel(previousLevel);
+  const completed = task ? levelTaskProgress(nextAccount, previousLevel).complete : false;
+  const nextLevel = completed ? Math.min(MAX_PLAYER_LEVEL, previousLevel + 1) : previousLevel;
   nextAccount.level = nextLevel;
   const levelAdded = nextLevel - previousLevel;
   return {
@@ -564,7 +627,39 @@ export function completeChallenge(account, rewardCoins = 500) {
     levelAdded,
     message: levelAdded
       ? `闖關成功，獲得 ${rewardCoins} 金幣，升到 Lv. ${nextAccount.level}。`
-      : `闖關成功，獲得 ${rewardCoins} 金幣，等級已經是 Lv. ${MAX_PLAYER_LEVEL}。`
+      : previousLevel >= MAX_PLAYER_LEVEL
+        ? `闖關成功，獲得 ${rewardCoins} 金幣，等級已經是 Lv. ${MAX_PLAYER_LEVEL}。`
+        : `闖關成功，獲得 ${rewardCoins} 金幣。下一級還需要：${levelTaskProgress(nextAccount, previousLevel).missingText}。`
+  };
+}
+
+export function levelTaskForLevel(level = 1) {
+  const currentLevel = clampChallengeLevel(level);
+  return LEVEL_TASKS.find((task) => task.level === currentLevel) || null;
+}
+
+export function levelTaskProgress(account, level = account?.level || 1) {
+  const task = levelTaskForLevel(level);
+  const safeAccount = withAchievementDefaults(account || {});
+  if (!task) {
+    return { task: null, complete: true, challengeDone: true, actionDone: true, missingText: "已經滿級" };
+  }
+  const achievements = safeAccount.achievements;
+  const challengeValue = Number(achievements.challengeCompletions || 0);
+  const actionValue = Number(achievements[task.metric] || 0);
+  const challengeDone = challengeValue >= task.challengeTarget;
+  const actionDone = actionValue >= task.target;
+  const missing = [];
+  if (!challengeDone) missing.push(`再完成 ${task.challengeTarget - challengeValue} 次闖關`);
+  if (!actionDone) missing.push(`${task.action}還差 ${task.target - actionValue}${task.unit}`);
+  return {
+    task,
+    complete: challengeDone && actionDone,
+    challengeDone,
+    actionDone,
+    challengeValue,
+    actionValue,
+    missingText: missing.length ? missing.join("，") : "都完成了"
   };
 }
 
