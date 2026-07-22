@@ -30,6 +30,7 @@ const dataDir = path.join(__dirname, "data");
 const accountsFile = path.join(dataDir, "accounts.json");
 const codesFile = path.join(dataDir, "coinCodes.json");
 const PORT = Number(process.env.PORT || 3000);
+const HOST = process.env.RENDER ? "0.0.0.0" : "127.0.0.1";
 const TICK_RATE = 30;
 const CHALLENGE_PLATFORMS = [
   { x: -52, y: 1.2, z: 36, w: 12, d: 8 },
@@ -101,8 +102,8 @@ server.on("error", (error) => {
   console.error("Server error:", error.message);
 });
 
-server.listen(PORT, "127.0.0.1", () => {
-  console.log(`Square Square Cat is running at http://localhost:${PORT}`);
+server.listen(PORT, HOST, () => {
+  console.log(`Square Square Cat is running on ${HOST}:${PORT}`);
 });
 
 async function loadData() {
