@@ -108,11 +108,17 @@ let ferrisWheelGroup;
 let ferrisCabinGroup;
 let ferrisIconGroup;
 let challengeStageGroup;
+let starField;
+let ambientLight;
+let sunLight;
+let sunMesh;
+let cloudGroup;
 let renderedChallengeLevel = null;
 
 const CHALLENGE_BASE = { x: -760, y: 1.2, z: -720 };
 const MAX_PLAYER_LEVEL = 100;
 const MAX_CHALLENGE_STEP_Y = 2.8;
+const DAY_CYCLE_SECONDS = 180;
 const CHALLENGE_STAGE_COLORS = [0xffc5dc, 0xbfe8ff, 0xd9c7ff];
 const FERRIS_ICON_OPTIONS = [
   ["jump-cat", "方塊貓在跳"],
@@ -419,13 +425,14 @@ function initThree() {
   flatCtx = els.flatCanvas.getContext("2d");
   clock = new THREE.Clock();
 
-  const ambient = new THREE.HemisphereLight(0xb7efff, 0x233820, 2.2);
-  scene.add(ambient);
-  const sun = new THREE.DirectionalLight(0xffffff, 2.8);
-  sun.position.set(20, 40, 10);
-  scene.add(sun);
+  ambientLight = new THREE.HemisphereLight(0xb7efff, 0x233820, 2.2);
+  scene.add(ambientLight);
+  sunLight = new THREE.DirectionalLight(0xffffff, 2.8);
+  sunLight.position.set(20, 40, 10);
+  scene.add(sunLight);
 
   createStars();
+  createDaySkyObjects();
   createIsland();
   createPlayground();
   createRoom();
@@ -441,8 +448,41 @@ function createStars() {
     positions.push((Math.random() - 0.5) * 360, Math.random() * 180 - 30, (Math.random() - 0.5) * 360);
   }
   geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-  const material = new THREE.PointsMaterial({ color: 0xddefff, size: 0.65, sizeAttenuation: true });
-  scene.add(new THREE.Points(geometry, material));
+  const material = new THREE.PointsMaterial({ color: 0xddefff, size: 0.65, sizeAttenuation: true, transparent: true, opacity: 1 });
+  starField = new THREE.Points(geometry, material);
+  scene.add(starField);
+}
+
+function createDaySkyObjects() {
+  sunMesh = new THREE.Mesh(
+    new THREE.SphereGeometry(7, 28, 16),
+    new THREE.MeshBasicMaterial({ color: 0xffe46b, transparent: true, opacity: 0 })
+  );
+  scene.add(sunMesh);
+
+  cloudGroup = new THREE.Group();
+  const cloudMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0 });
+  const cloudPositions = [
+    [-52, 48, -36],
+    [-12, 58, -70],
+    [42, 52, -42],
+    [76, 46, 8],
+    [-76, 42, 30],
+    [18, 62, 48]
+  ];
+  for (const [x, y, z] of cloudPositions) {
+    const cloud = new THREE.Group();
+    for (let i = 0; i < 5; i += 1) {
+      const puff = new THREE.Mesh(new THREE.SphereGeometry(4.2, 16, 10), cloudMaterial);
+      puff.scale.set(1.6 + i * 0.12, 0.46 + (i % 2) * 0.08, 0.64);
+      puff.position.set((i - 2) * 5.4, Math.sin(i) * 1.1, (i % 2) * 1.5);
+      cloud.add(puff);
+    }
+    cloud.position.set(x, y, z);
+    cloud.userData.speed = 0.06 + Math.random() * 0.05;
+    cloudGroup.add(cloud);
+  }
+  scene.add(cloudGroup);
 }
 
 function createIsland() {
@@ -1697,8 +1737,7 @@ function drawFlatWorld() {
   ctx.save();
   ctx.scale(dpr, dpr);
   ctx.clearRect(0, 0, width, height);
-  ctx.fillStyle = "#bfe8ff";
-  ctx.fillRect(0, 0, width, height);
+  drawFlatSky(ctx, width, height, getDayFactor());
 
   const me = state.players.get(state.myId);
   if (!me) {
@@ -1733,6 +1772,47 @@ function drawFlatWorld() {
     .sort((a, b) => a.y - b.y)
     .forEach((player) => drawFlatCat(ctx, view, player, player.id === state.myId));
   ctx.restore();
+}
+
+function drawFlatSky(ctx, width, height, dayFactor) {
+  const sky = ctx.createLinearGradient(0, 0, 0, height * 0.72);
+  if (dayFactor > 0.05) {
+    sky.addColorStop(0, "#72c8ff");
+    sky.addColorStop(0.7, "#bfe8ff");
+    sky.addColorStop(1, "#eaf8ff");
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, width, height);
+    ctx.globalAlpha = 0.45 + dayFactor * 0.55;
+    ctx.fillStyle = "#ffe36d";
+    ctx.beginPath();
+    ctx.arc(width - 92, 78, 32, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#ffffff";
+    drawFlatCloud(ctx, width * 0.18, 82, 1);
+    drawFlatCloud(ctx, width * 0.52, 118, 0.84);
+    drawFlatCloud(ctx, width * 0.78, 96, 0.72);
+    ctx.globalAlpha = 1;
+  } else {
+    sky.addColorStop(0, "#0b1018");
+    sky.addColorStop(0.75, "#162035");
+    sky.addColorStop(1, "#20263a");
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, width, height);
+    ctx.fillStyle = "rgba(221, 239, 255, 0.9)";
+    for (let i = 0; i < 42; i += 1) {
+      const x = (i * 83) % width;
+      const y = 18 + ((i * 47) % Math.max(90, height * 0.42));
+      ctx.fillRect(x, y, 2, 2);
+    }
+  }
+}
+
+function drawFlatCloud(ctx, x, y, scale) {
+  ctx.beginPath();
+  ctx.ellipse(x - 30 * scale, y + 6 * scale, 24 * scale, 13 * scale, 0, 0, Math.PI * 2);
+  ctx.ellipse(x - 8 * scale, y, 28 * scale, 17 * scale, 0, 0, Math.PI * 2);
+  ctx.ellipse(x + 22 * scale, y + 7 * scale, 25 * scale, 12 * scale, 0, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 function drawFlatIsland(ctx, view, width, height) {
@@ -1990,14 +2070,63 @@ function hexColor(value) {
   return `#${Number(value || 0).toString(16).padStart(6, "0")}`;
 }
 
+function getDayFactor() {
+  const phase = ((clock?.elapsedTime || 0) + DAY_CYCLE_SECONDS * 0.18) % DAY_CYCLE_SECONDS / DAY_CYCLE_SECONDS;
+  const sunrise = smoothStep(0.03, 0.18, phase);
+  const sunset = smoothStep(0.55, 0.72, phase);
+  return Math.max(0, Math.min(1, sunrise * (1 - sunset)));
+}
+
+function smoothStep(edge0, edge1, value) {
+  const t = Math.max(0, Math.min(1, (value - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
+}
+
+function updateSky(dt) {
+  const dayFactor = getDayFactor();
+  const nightFactor = 1 - dayFactor;
+  const skyColor = new THREE.Color(0x0b1018).lerp(new THREE.Color(0x86d6ff), dayFactor);
+  const fogColor = new THREE.Color(0x0b1018).lerp(new THREE.Color(0xc8f0ff), dayFactor);
+  scene.background = skyColor;
+  scene.fog.color.copy(fogColor);
+  scene.fog.near = 70 + dayFactor * 25;
+  scene.fog.far = 180 + dayFactor * 80;
+  if (ambientLight) {
+    ambientLight.intensity = 1.65 + dayFactor * 1.25;
+    ambientLight.color.setHex(dayFactor > 0.4 ? 0xd8f6ff : 0xb7efff);
+  }
+  if (sunLight) {
+    sunLight.intensity = 0.9 + dayFactor * 2.5;
+    sunLight.position.set(20 + dayFactor * 28, 38 + dayFactor * 16, 10 - dayFactor * 26);
+  }
+  if (starField?.material) {
+    starField.material.opacity = Math.max(0.08, nightFactor);
+  }
+  if (sunMesh?.material) {
+    sunMesh.material.opacity = dayFactor;
+    sunMesh.position.set(58, 58, -62);
+  }
+  if (cloudGroup) {
+    cloudGroup.visible = dayFactor > 0.03;
+    for (const cloud of cloudGroup.children) {
+      cloud.position.x += Number(cloud.userData.speed || 0.06) * dt * 18;
+      if (cloud.position.x > 96) cloud.position.x = -96;
+      for (const puff of cloud.children) {
+        puff.material.opacity = 0.78 * dayFactor;
+      }
+    }
+  }
+}
+
 function animate() {
   requestAnimationFrame(animate);
-  clock.getDelta();
+  const dt = clock.getDelta();
   els.flatCanvas.classList.toggle("hidden", !is2DMode());
   if (is2DMode()) {
     drawFlatWorld();
     return;
   }
+  updateSky(dt);
   const me = state.players.get(state.myId);
   if (me) {
     const distance = 15.8;
@@ -2471,7 +2600,7 @@ function showChallengeModal() {
     <div class="list">
       <div class="list-item">
         <strong>上跳闖關</strong>
-        <p>這會把你傳送到真正的上跳關卡。完成可獲得 500 金幣並升 1 級。</p>
+        <p>這會把你傳送到真正的上跳關卡。完成可獲得 500 金幣；如果這一級任務也完成，就會升到下一級。</p>
       </div>
       <div class="list-item">
         <strong>組隊玩法</strong>
