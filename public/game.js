@@ -92,6 +92,8 @@ const CHALLENGE_PLATFORMS = [
   { x: -2, y: 17, z: 27, w: 9, d: 7, color: 0xd9c7ff }
 ];
 const CHALLENGE_BASE = { x: -760, y: 1.2, z: -720 };
+const MAX_PLAYER_LEVEL = 100;
+const MAX_CHALLENGE_STEP_Y = 2.8;
 const CHALLENGE_STAGE_COLORS = [0xffc5dc, 0xbfe8ff, 0xd9c7ff];
 const HOUSE_PAINT_LOOKS = {
   red: { color: 0xff5a6c },
@@ -1054,17 +1056,18 @@ function updateSwingMesh(swing) {
 }
 
 function getChallengePlatforms(level = 1) {
-  const difficulty = Math.max(1, Number(level || 1));
+  const difficulty = clampChallengeLevel(level);
   const start = challengeStartForLevel(difficulty);
-  const stepX = 8 + Math.min(4.5, difficulty * 0.35);
-  const stepY = 1.8 + Math.min(2.4, difficulty * 0.16);
-  const zSpread = 3 + Math.min(10, difficulty * 0.65);
-  const width = Math.max(6.5, 13 - difficulty * 0.35);
-  const depth = Math.max(5.5, 9 - difficulty * 0.24);
-  return Array.from({ length: 7 }, (_, index) => ({
+  const length = 7 + Math.floor((difficulty - 1) / 20);
+  const stepX = 7.2 + Math.min(1.8, difficulty * 0.018);
+  const stepY = Math.min(MAX_CHALLENGE_STEP_Y, 1.75 + difficulty * 0.011);
+  const zSpread = Math.min(18, 3 + difficulty * 0.15);
+  const width = Math.max(4.8, 13 - difficulty * 0.07);
+  const depth = Math.max(4.2, 9 - difficulty * 0.05);
+  return Array.from({ length }, (_, index) => ({
     x: start.x + index * stepX,
-    y: start.y + index * stepY,
-    z: start.z + (index === 0 ? 0 : (index % 2 === 0 ? 1 : -1) * Math.min(zSpread, 2 + index * 1.2)),
+    y: Number((start.y + index * stepY).toFixed(3)),
+    z: start.z + (index === 0 ? 0 : (index % 2 === 0 ? 1 : -1) * Math.min(zSpread, 2 + index * 1.15)),
     w: index === 0 ? 17 : width,
     d: index === 0 ? 10 : depth,
     color: CHALLENGE_STAGE_COLORS[index % CHALLENGE_STAGE_COLORS.length]
@@ -1072,7 +1075,7 @@ function getChallengePlatforms(level = 1) {
 }
 
 function challengeStartForLevel(level = 1) {
-  const difficulty = Math.max(1, Number(level || 1));
+  const difficulty = clampChallengeLevel(level);
   return {
     x: CHALLENGE_BASE.x - (difficulty - 1) * 130,
     y: CHALLENGE_BASE.y,
@@ -1086,6 +1089,12 @@ function challengeFinishForLevel(level) {
   return { x: last.x + 4, y: last.y + 2.2, z: last.z };
 }
 
+function clampChallengeLevel(level = 1) {
+  const number = Number(level);
+  if (!Number.isFinite(number)) return 1;
+  return Math.max(1, Math.min(MAX_PLAYER_LEVEL, Math.floor(number)));
+}
+
 function createChallengeStage(level = 1) {
   challengeStageGroup = new THREE.Group();
   scene.add(challengeStageGroup);
@@ -1093,18 +1102,22 @@ function createChallengeStage(level = 1) {
 }
 
 function updateChallengeStage(level = 1) {
-  const difficulty = Math.max(1, Number(level || 1));
+  const difficulty = clampChallengeLevel(level);
   if (!challengeStageGroup || renderedChallengeLevel === difficulty) return;
   renderedChallengeLevel = difficulty;
   challengeStageGroup.clear();
+  const platforms = getChallengePlatforms(difficulty);
+  const first = platforms[0];
+  const last = platforms.at(-1);
+  const stageWidth = Math.max(112, last.x - first.x + 36);
   const base = new THREE.Mesh(
-    new THREE.BoxGeometry(112, 1, 68),
+    new THREE.BoxGeometry(stageWidth, 1, 68),
     new THREE.MeshStandardMaterial({ color: 0x1b2030, roughness: 0.8 })
   );
   const start = challengeStartForLevel(difficulty);
-  base.position.set(start.x + 34, -3, start.z);
+  base.position.set((first.x + last.x) / 2, -3, start.z);
   challengeStageGroup.add(base);
-  for (const platform of getChallengePlatforms(difficulty)) {
+  for (const platform of platforms) {
     const mesh = new THREE.Mesh(
       new THREE.BoxGeometry(platform.w, 0.8, platform.d),
       new THREE.MeshStandardMaterial({ color: platform.color, roughness: 0.62 })

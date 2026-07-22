@@ -15,11 +15,14 @@ import {
   applyHousePaint,
   buyItem,
   canFly,
+  challengeFinishForLevel,
   challengeLevelForAccounts,
+  challengeStartForLevel,
   claimLevelReward,
   completeChallenge,
   createAccount,
   equipItem,
+  getChallengePlatforms,
   isValidNewAccountCode,
   makeGuestAccount,
   redeemCode,
@@ -43,7 +46,6 @@ const CHALLENGE_PLATFORMS = [
   { x: -12, y: 13.8, z: 34, w: 8, d: 7 },
   { x: -2, y: 17, z: 27, w: 9, d: 7 }
 ];
-const CHALLENGE_BASE = { x: -760, y: 1.2, z: -720 };
 const SLIDE = { topX: -28, topY: 5.9, bottomX: -14.5, bottomY: 1.2, z: -20 };
 const SOLID_FLOORS = [
   { x: -28, y: 5.5, z: -20, w: 7, d: 6 },
@@ -558,7 +560,8 @@ function updateChallengePlayer(session, dt) {
     return;
   }
   const start = challengeStartForLevel(player.challengeLevel);
-  player.x = clamp(player.x, start.x - 18, start.x + 86);
+  const finish = challengeFinishForLevel(player.challengeLevel);
+  player.x = clamp(player.x, start.x - 18, finish.x + 14);
   player.z = clamp(player.z, start.z - 32, start.z + 32);
 }
 
@@ -1083,38 +1086,6 @@ function getTeamSessions(session) {
   return [...teams.get(session.player.teamId)]
     .map((id) => sessions.get(id))
     .filter(Boolean);
-}
-
-function getChallengePlatforms(level = 1) {
-  const difficulty = Math.max(1, Number(level || 1));
-  const start = challengeStartForLevel(difficulty);
-  const stepX = 8 + Math.min(4.5, difficulty * 0.35);
-  const stepY = 1.8 + Math.min(2.4, difficulty * 0.16);
-  const zSpread = 3 + Math.min(10, difficulty * 0.65);
-  const width = Math.max(6.5, 13 - difficulty * 0.35);
-  const depth = Math.max(5.5, 9 - difficulty * 0.24);
-  return Array.from({ length: 7 }, (_, index) => ({
-    x: start.x + index * stepX,
-    y: start.y + index * stepY,
-    z: start.z + (index === 0 ? 0 : (index % 2 === 0 ? 1 : -1) * Math.min(zSpread, 2 + index * 1.2)),
-    w: index === 0 ? 17 : width,
-    d: index === 0 ? 10 : depth
-  }));
-}
-
-function challengeStartForLevel(level = 1) {
-  const difficulty = Math.max(1, Number(level || 1));
-  return {
-    x: CHALLENGE_BASE.x - (difficulty - 1) * 130,
-    y: CHALLENGE_BASE.y,
-    z: CHALLENGE_BASE.z - (difficulty % 5) * 110
-  };
-}
-
-function challengeFinishForLevel(level) {
-  const platforms = getChallengePlatforms(level);
-  const last = platforms.at(-1);
-  return { x: last.x + 4, y: last.y + 2.2, z: last.z, w: 8, d: 8 };
 }
 
 function isAtChallengeFinish(player) {

@@ -7,6 +7,9 @@ export const HOST_PASSWORD = process.env.HOST_PASSWORD || null;
 
 export const DEFAULT_COIN_CODES = {};
 export const CAT_VARIANTS = ["black", "white", "calico", "orange"];
+export const MAX_PLAYER_LEVEL = 100;
+export const MAX_CHALLENGE_STEP_Y = 2.8;
+export const CHALLENGE_BASE = { x: -760, y: 1.2, z: -720 };
 
 export const EXTRA_NON_FURNITURE_ITEMS = [
   ["sun-hat", "太陽帽", "hat", "wearable", 140],
@@ -232,7 +235,12 @@ export const LEVEL_REWARDS = [
   { level: 10, coins: 700, diamonds: 2, itemId: "cat-pet" },
   { level: 15, coins: 1200, diamonds: 3, itemId: "rainbow-trail" },
   { level: 20, coins: 1800, diamonds: 5, itemId: "mini-wings" },
-  { level: 25, coins: 2600, diamonds: 8, itemId: "house-body-paint-starry-night" }
+  { level: 25, coins: 2600, diamonds: 8, itemId: "house-body-paint-starry-night" },
+  { level: 30, coins: 3200, diamonds: 10, itemId: "angel-wings" },
+  { level: 40, coins: 4500, diamonds: 14, itemId: "crystal-trail" },
+  { level: 50, coins: 6000, diamonds: 18, itemId: "crystal-pet" },
+  { level: 75, coins: 9000, diamonds: 25, itemId: "house-roof-paint-starry-night" },
+  { level: 100, coins: 15000, diamonds: 40, itemId: "crown-hat" }
 ].map((reward) => {
   const item = reward.itemId ? SHOP_ITEMS.find((candidate) => candidate.id === reward.itemId) : null;
   return { ...reward, itemName: item?.name || null };
@@ -485,11 +493,11 @@ export function sendDiamondGift(sender, recipient, rawAmount, giftDetails = {}) 
 
 export function challengeLevelForAccounts(accounts) {
   const hasOnlyHosts = accounts.length > 0 && accounts.every((account) => account.isHost);
-  if (hasOnlyHosts) return 25;
+  if (hasOnlyHosts) return MAX_PLAYER_LEVEL;
   const levels = accounts
     .map((account) => Number(account.level))
     .filter((level) => Number.isFinite(level) && level > 0);
-  return Math.max(1, Math.min(...(levels.length ? levels : [1])));
+  return clampChallengeLevel(Math.min(...(levels.length ? levels : [1])));
 }
 
 export function completeChallenge(account, rewardCoins = 500) {
@@ -497,15 +505,59 @@ export function completeChallenge(account, rewardCoins = 500) {
     return { ok: true, account: structuredClone(account), coinsAdded: 0, levelAdded: 0, message: "主機完成闖關。" };
   }
   const nextAccount = structuredClone(account);
+  const previousLevel = clampChallengeLevel(nextAccount.level || 1);
+  const nextLevel = Math.min(MAX_PLAYER_LEVEL, previousLevel + 1);
   nextAccount.coins += rewardCoins;
-  nextAccount.level = Math.max(1, Number(nextAccount.level || 1)) + 1;
+  nextAccount.level = nextLevel;
+  const levelAdded = nextLevel - previousLevel;
   return {
     ok: true,
     account: nextAccount,
     coinsAdded: rewardCoins,
-    levelAdded: 1,
-    message: `闖關成功，獲得 ${rewardCoins} 金幣，升到 Lv. ${nextAccount.level}。`
+    levelAdded,
+    message: levelAdded
+      ? `闖關成功，獲得 ${rewardCoins} 金幣，升到 Lv. ${nextAccount.level}。`
+      : `闖關成功，獲得 ${rewardCoins} 金幣，等級已經是 Lv. ${MAX_PLAYER_LEVEL}。`
   };
+}
+
+export function clampChallengeLevel(level = 1) {
+  const number = Number(level);
+  if (!Number.isFinite(number)) return 1;
+  return Math.max(1, Math.min(MAX_PLAYER_LEVEL, Math.floor(number)));
+}
+
+export function getChallengePlatforms(level = 1) {
+  const difficulty = clampChallengeLevel(level);
+  const start = challengeStartForLevel(difficulty);
+  const length = 7 + Math.floor((difficulty - 1) / 20);
+  const stepX = 7.2 + Math.min(1.8, difficulty * 0.018);
+  const stepY = Math.min(MAX_CHALLENGE_STEP_Y, 1.75 + difficulty * 0.011);
+  const zSpread = Math.min(18, 3 + difficulty * 0.15);
+  const width = Math.max(4.8, 13 - difficulty * 0.07);
+  const depth = Math.max(4.2, 9 - difficulty * 0.05);
+  return Array.from({ length }, (_, index) => ({
+    x: start.x + index * stepX,
+    y: Number((start.y + index * stepY).toFixed(3)),
+    z: start.z + (index === 0 ? 0 : (index % 2 === 0 ? 1 : -1) * Math.min(zSpread, 2 + index * 1.15)),
+    w: index === 0 ? 17 : width,
+    d: index === 0 ? 10 : depth
+  }));
+}
+
+export function challengeStartForLevel(level = 1) {
+  const difficulty = clampChallengeLevel(level);
+  return {
+    x: CHALLENGE_BASE.x - (difficulty - 1) * 130,
+    y: CHALLENGE_BASE.y,
+    z: CHALLENGE_BASE.z - (difficulty % 5) * 110
+  };
+}
+
+export function challengeFinishForLevel(level = 1) {
+  const platforms = getChallengePlatforms(level);
+  const last = platforms.at(-1);
+  return { x: last.x + 4, y: last.y + 2.2, z: last.z, w: 8, d: 8 };
 }
 
 export function claimLevelReward(account, level) {

@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {
   CAT_VARIANTS,
   LEVEL_REWARDS,
+  MAX_CHALLENGE_STEP_Y,
+  MAX_PLAYER_LEVEL,
   SHOP_ITEMS,
   addFriend,
   applyHousePaint,
@@ -12,6 +14,7 @@ import {
   completeChallenge,
   createAccount,
   equipItem,
+  getChallengePlatforms,
   isValidNewAccountCode,
   redeemCode,
   sendCoinGift,
@@ -175,7 +178,8 @@ test("challenge level uses the lowest player level in a team", () => {
 
   assert.equal(challengeLevelForAccounts([levelNine, levelOne]), 1);
   assert.equal(challengeLevelForAccounts([levelThree, levelEight, levelTwo]), 2);
-  assert.equal(challengeLevelForAccounts([createAccount("host", { isHost: true })]), 25);
+  assert.equal(challengeLevelForAccounts([createAccount("host", { isHost: true })]), MAX_PLAYER_LEVEL);
+  assert.equal(challengeLevelForAccounts([createAccount("over", { level: 140 })]), MAX_PLAYER_LEVEL);
 });
 
 test("completing a challenge gives coins and raises level", () => {
@@ -185,6 +189,26 @@ test("completing a challenge gives coins and raises level", () => {
   assert.equal(result.ok, true);
   assert.equal(result.account.coins, 520);
   assert.equal(result.account.level, 5);
+});
+
+test("player level caps at the maximum challenge level", () => {
+  const account = createAccount("abc", { level: MAX_PLAYER_LEVEL, coins: 20 });
+  const result = completeChallenge(account);
+
+  assert.equal(result.ok, true);
+  assert.equal(result.account.level, MAX_PLAYER_LEVEL);
+  assert.equal(result.levelAdded, 0);
+});
+
+test("challenge platforms stay jumpable through level one hundred", () => {
+  for (let level = 1; level <= MAX_PLAYER_LEVEL; level += 1) {
+    const platforms = getChallengePlatforms(level);
+    assert.ok(platforms.length >= 7);
+    for (let index = 1; index < platforms.length; index += 1) {
+      const rise = platforms[index].y - platforms[index - 1].y;
+      assert.ok(rise <= MAX_CHALLENGE_STEP_Y + Number.EPSILON * 16, `Lv. ${level} step ${index} rise ${rise} is too high`);
+    }
+  }
 });
 
 test("level rewards can be claimed once when the account reaches that level", () => {
@@ -205,4 +229,8 @@ test("level rewards can give visible inventory items", () => {
 
   assert.equal(result.ok, true);
   assert.equal(result.account.inventory.includes("cat-pet"), true);
+});
+
+test("level rewards include the level one hundred milestone", () => {
+  assert.ok(LEVEL_REWARDS.some((reward) => reward.level === MAX_PLAYER_LEVEL));
 });
