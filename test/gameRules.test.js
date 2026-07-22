@@ -9,6 +9,7 @@ import {
   MAX_CHALLENGE_STEP_Y,
   MAX_PLAYER_LEVEL,
   SHOP_ITEMS,
+  WEATHER_MODES,
   addFriend,
   applyHousePaint,
   buyItem,
@@ -26,6 +27,7 @@ import {
   richestDiamondAccountCode,
   isValidNewAccountCode,
   makeGuestAccount,
+  normalizeWeatherMode,
   redeemCode,
   sendCoinGift,
   sendDiamondGift
@@ -73,6 +75,13 @@ test("guest account can use a 2D display preference", () => {
   const account = makeGuestAccount({ prefers2D: true });
   assert.equal(account.isGuest, true);
   assert.equal(account.prefers2D, true);
+});
+
+test("weather modes are fixed and invalid choices fall back to auto", () => {
+  assert.deepEqual(WEATHER_MODES, ["auto", "rain", "thunder", "rainbow", "aurora"]);
+  assert.equal(normalizeWeatherMode("rain"), "rain");
+  assert.equal(normalizeWeatherMode("thunder"), "thunder");
+  assert.equal(normalizeWeatherMode("nope"), "auto");
 });
 
 test("built-in achievement titles have the requested names and colors", () => {

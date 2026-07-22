@@ -15,6 +15,8 @@ import {
   LEVEL_TASKS,
   SHOP_ITEMS,
   TITLE_COLORS,
+  WEATHER_LABELS,
+  WEATHER_MODES,
   addFriend,
   applyHousePaint,
   buyItem,
@@ -31,6 +33,7 @@ import {
   getChallengePlatforms,
   isValidNewAccountCode,
   makeGuestAccount,
+  normalizeWeatherMode,
   redeemCode,
   richestDiamondAccountCode,
   sendCoinGift,
@@ -95,6 +98,7 @@ let worldCoins = makeWorldCoins(80);
 let survivalPickups = [];
 let survivalHazards = [];
 let worldBushes = makeHiddenBushes();
+let worldWeather = "auto";
 
 await loadData();
 
@@ -421,6 +425,9 @@ function handleMessage(socket, message) {
     case "adminGrantTitle":
       handleAdminGrantTitle(socket, session, message.titleId, message.accountCode);
       break;
+    case "adminSetWeather":
+      handleAdminSetWeather(socket, session, message.mode);
+      break;
     default:
       send(socket, "notice", { message: "未知指令。" });
   }
@@ -536,6 +543,7 @@ function tickWorld() {
     coins: worldCoins,
     survivalPickups: [],
     survivalHazards: [],
+    weather: worldWeather,
     totalAccounts: Object.keys(accounts).length,
     bushes: worldBushes,
     swing: SWING,
@@ -1683,6 +1691,9 @@ function sendAccount(socket, account) {
     shopItems: SHOP_ITEMS,
     levelRewards: LEVEL_REWARDS,
     levelTasks: LEVEL_TASKS,
+    weather: worldWeather,
+    weatherModes: WEATHER_MODES,
+    weatherLabels: WEATHER_LABELS,
     titleCatalog,
     titleColors: TITLE_COLORS,
     titlePlayers: account.isHost ? titlePlayers() : undefined,
@@ -1808,6 +1819,16 @@ function handleAdminGrantTitle(socket, session, rawTitleId, rawAccountCode) {
   saveAccounts();
   sendAccount(socket, session.account);
   send(socket, "notice", { message: `已把「${titleCatalog[titleId].name}」發給 ${accountCode}。` });
+}
+
+function handleAdminSetWeather(socket, session, mode) {
+  if (!session.account.isHost) {
+    send(socket, "notice", { message: "只有主機可以切換天氣。" });
+    return;
+  }
+  worldWeather = normalizeWeatherMode(mode);
+  sendAccount(socket, session.account);
+  broadcast("notice", { message: `主機把天氣切換成「${WEATHER_LABELS[worldWeather]}」。` });
 }
 
 function titlePlayers() {

@@ -11,6 +11,14 @@ export const MAX_PLAYER_LEVEL = 100;
 export const MAX_CHALLENGE_STEP_Y = 2.8;
 export const CHALLENGE_BASE = { x: -760, y: 1.2, z: -720 };
 export const SURVIVAL_DRAIN_PER_SECOND = { hunger: 0.18, thirst: 0.24 };
+export const WEATHER_MODES = ["auto", "rain", "thunder", "rainbow", "aurora"];
+export const WEATHER_LABELS = {
+  auto: "晴天/日夜",
+  rain: "下雨",
+  thunder: "打雷",
+  rainbow: "彩虹",
+  aurora: "極光"
+};
 export const DEFAULT_TITLE_ID = "rookie-cat";
 export const DEFAULT_TITLES = {
   [DEFAULT_TITLE_ID]: { id: DEFAULT_TITLE_ID, name: "新手貓貓", color: "black" },
@@ -363,6 +371,11 @@ function loadLocalEnv() {
 
 export function isValidNewAccountCode(code) {
   return /^[A-Za-z0-9]{1,10}$/.test(String(code || ""));
+}
+
+export function normalizeWeatherMode(mode) {
+  const value = String(mode || "").trim();
+  return WEATHER_MODES.includes(value) ? value : "auto";
 }
 
 export function normalizeAccountCode(code) {
