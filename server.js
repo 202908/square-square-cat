@@ -571,8 +571,15 @@ function updatePlayer(session, dt) {
     player.yaw = Math.atan2(player.vx, player.vz);
   }
 
+  const swimming = player.location === "island" && isInRiver(player);
   if (canFly(session.account)) {
     player.vy = session.input.y * 5;
+  } else if (swimming) {
+    player.vy -= 7 * dt;
+    if (session.input.jump) {
+      player.vy = Math.max(player.vy, 3.2);
+      player.onGround = false;
+    }
   } else {
     player.vy -= 18 * dt;
     if (session.input.jump && player.onGround) {
@@ -586,7 +593,10 @@ function updatePlayer(session, dt) {
   player.z += player.vz * dt;
   resolveSolidBlocks(player);
 
-  const floorY = floorHeightAt(player.x, player.y, player.z);
+  let floorY = floorHeightAt(player.x, player.y, player.z);
+  if (player.location === "island" && isInRiver(player)) {
+    floorY -= 0.55;
+  }
   if (player.y <= floorY) {
     player.y = floorY;
     player.vy = 0;
@@ -642,6 +652,7 @@ function nearestMonsterTarget(monster) {
   let bestDistance = Infinity;
   for (const session of sessions.values()) {
     if (session.player.location !== "island") continue;
+    if (session.account.survivalMode !== "adult") continue;
     const distance = Math.hypot(session.player.x - monster.x, session.player.z - monster.z);
     if (distance <= 36 && distance < bestDistance) {
       best = session;
@@ -759,7 +770,7 @@ function handleAttack(session) {
   const target = findPlayerInFront(session, 4);
   session.player.attackUntil = Date.now() + 450;
   if (!target) {
-    const monster = findMonsterInFront(session, 5);
+    const monster = session.account.survivalMode === "adult" ? findMonsterInFront(session, 5) : null;
     if (monster) hitMonster(session, monster);
     return;
   }
@@ -1723,10 +1734,7 @@ function collectNearbySurvivalPickups(session) {
 
 function drinkFromRiver(session) {
   if (session.account.survivalMode !== "adult" || session.player.location !== "island") return;
-  const inRiver = session.player.x >= RIVER.xMin
-    && session.player.x <= RIVER.xMax
-    && Math.abs(session.player.z - RIVER.z) <= RIVER.width / 2 + 1;
-  if (!inRiver || Number(session.account.thirst || 100) >= 100) return;
+  if (!isInRiver(session.player) || Number(session.account.thirst || 100) >= 100) return;
   session.account.thirst = Math.min(100, Number(session.account.thirst || 0) + 0.55);
   if (Date.now() > Number(session.player.riverNoticeAfter || 0)) {
     send(session.socket, "notice", { message: "你在溪流旁喝水，水分正在回復。" });
@@ -1738,6 +1746,7 @@ function drinkFromRiver(session) {
 function handleHazardHits(session) {
   const player = session.player;
   if (player.location !== "island" || Date.now() < Number(player.hazardCooldownUntil || 0)) return;
+  if (session.account.survivalMode !== "adult") return;
   for (const hazard of survivalHazards) {
     if (hazard.dead) continue;
     const distance = Math.hypot(player.x - hazard.x, player.z - hazard.z);
@@ -1759,6 +1768,12 @@ function handleHazardHits(session) {
     }
     return;
   }
+}
+
+function isInRiver(player) {
+  return player.x >= RIVER.xMin
+    && player.x <= RIVER.xMax
+    && Math.abs(player.z - RIVER.z) <= RIVER.width / 2 + 1;
 }
 
 function teammateNamesFor(session) {

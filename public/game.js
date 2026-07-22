@@ -871,14 +871,14 @@ function updateWorldState(message) {
     }
     updateCatMesh(state.meshes.get(player.id), player);
   });
+  const me = state.players.get(state.myId);
   updateCoinMeshes(coins);
   updateSurvivalPickupMeshes(message.survivalPickups || []);
-  updateHazardMeshes(message.survivalHazards || []);
+  updateHazardMeshes(message.survivalHazards || [], me);
   updateBushMeshes(bushes);
   updateHouseMeshes(houses);
   updateSwingMesh(swing);
   updateFerrisMesh(state.ferris);
-  const me = state.players.get(state.myId);
   updateChallengeStage(me?.challengeLevel || state.account?.level || 1);
   if (!els.modal.classList.contains("hidden") && els.modalTitle.textContent === "在線玩家") {
     showOnlinePlayersModal();
@@ -888,7 +888,7 @@ function updateWorldState(message) {
   updateTeamStatus(me);
   updateSurvivalHud(me);
   updateFacilityDiscovery(me);
-  updateActionButtons(me, houses, bushes);
+  updateActionButtons(me, houses, bushes, message.survivalHazards || []);
   updateRoomFurniture(me?.roomItems || []);
 }
 
@@ -932,11 +932,15 @@ function updateFacilityDiscovery(me) {
   showNotice(`你來到了「${nearest.name}」。`);
 }
 
-function updateActionButtons(me, houses, bushes = []) {
+function updateActionButtons(me, houses, bushes = [], hazards = []) {
   if (!me) return;
   const nearPlayer = [...state.players.values()].some((player) => {
     if (player.id === state.myId || player.location !== me.location) return false;
     return Math.hypot(player.x - me.x, player.z - me.z) < 4.5;
+  });
+  const nearMonster = me.survivalMode === "adult" && hazards.some((hazard) => {
+    if (hazard.dead) return false;
+    return Math.hypot(hazard.x - me.x, hazard.z - me.z) < 5.5;
   });
   const ownHouse = houses.find((house) => house.owner === state.account?.code);
   const nearHouse = ownHouse && Math.hypot(ownHouse.x - me.x, ownHouse.z - me.z) < 6;
@@ -951,7 +955,7 @@ function updateActionButtons(me, houses, bushes = []) {
 
   els.stackButton.textContent = me.carrying ? "放下來" : me.carriedBy ? "跳下來" : "疊疊樂";
   els.stackButton.classList.toggle("hidden", !canUseStack);
-  els.attackButton.classList.toggle("hidden", !nearPlayer);
+  els.attackButton.classList.toggle("hidden", !(nearPlayer || nearMonster));
   els.enterHouseButton.classList.toggle("hidden", !(me.location === "room" || nearHouse));
   els.clearHouseActionButton.classList.toggle("hidden", me.location !== "room");
   els.searchBushButton.classList.toggle("hidden", !(me.location === "island" && nearBush));
@@ -1167,8 +1171,9 @@ function createSurvivalPickupMesh(kind) {
   return new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.45, 0.65), new THREE.MeshStandardMaterial({ color: 0xff6b6b, roughness: 0.55 }));
 }
 
-function updateHazardMeshes(hazards) {
-  const activeHazards = hazards.filter((hazard) => !hazard.dead);
+function updateHazardMeshes(hazards, me) {
+  const canSeeMonsters = me?.survivalMode === "adult";
+  const activeHazards = canSeeMonsters ? hazards.filter((hazard) => !hazard.dead) : [];
   const ids = new Set(activeHazards.map((hazard) => hazard.id));
   for (const [id, mesh] of state.hazardMeshes) {
     if (!ids.has(id)) {
