@@ -250,12 +250,6 @@ h2 {
     conic-gradient(#62b7ff var(--thirst, 100%), rgba(255, 255, 255, 0.16) 0);
 }
 
-.survival-ring.health {
-  background:
-    radial-gradient(circle at center, rgba(16, 19, 24, 0.9) 55%, transparent 57%),
-    conic-gradient(#ff5a6c var(--health, 100%), rgba(255, 255, 255, 0.16) 0);
-}
-
 .chat-panel {
   left: 12px;
   bottom: max(12px, env(safe-area-inset-bottom));
