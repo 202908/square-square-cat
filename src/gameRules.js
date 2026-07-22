@@ -339,6 +339,7 @@ export function createAccount(code, overrides = {}) {
     survivalMode: isHost ? "host" : null,
     hunger: 100,
     thirst: 100,
+    prefers2D: false,
     createdAt: new Date().toISOString(),
     ...overrides
   };
@@ -620,32 +621,13 @@ export function updateSurvivalStats(account, seconds = 0) {
   const nextAccount = structuredClone(account);
   nextAccount.hunger = clampPercent(nextAccount.hunger ?? 100);
   nextAccount.thirst = clampPercent(nextAccount.thirst ?? 100);
-  if (nextAccount.survivalMode !== "adult" || nextAccount.isHost) {
-    return { account: nextAccount, died: false };
-  }
-  nextAccount.hunger = clampPercent(nextAccount.hunger - seconds * SURVIVAL_DRAIN_PER_SECOND.hunger);
-  nextAccount.thirst = clampPercent(nextAccount.thirst - seconds * SURVIVAL_DRAIN_PER_SECOND.thirst);
-  const died = nextAccount.hunger <= 0 || nextAccount.thirst <= 0;
-  if (died) {
-    nextAccount.hunger = 100;
-    nextAccount.thirst = 100;
-  }
-  return { account: nextAccount, died };
+  return { account: nextAccount, died: false };
 }
 
 export function damageAdultThirst(account, amount = 18) {
   const nextAccount = structuredClone(account);
   nextAccount.thirst = clampPercent(nextAccount.thirst ?? 100);
-  if (nextAccount.isHost || nextAccount.survivalMode !== "adult") {
-    return { account: nextAccount, damaged: false, died: false };
-  }
-  nextAccount.thirst = clampPercent(nextAccount.thirst - Math.max(0, Number(amount || 0)));
-  const died = nextAccount.thirst <= 0;
-  if (died) {
-    nextAccount.hunger = 100;
-    nextAccount.thirst = 100;
-  }
-  return { account: nextAccount, damaged: true, died };
+  return { account: nextAccount, damaged: false, died: false };
 }
 
 export function clampPercent(value) {

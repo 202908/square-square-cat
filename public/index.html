@@ -28,6 +28,10 @@
         <form id="authForm" class="panel hidden">
           <label id="authLabel" for="accountCode">輸入帳號亂碼</label>
           <input id="accountCode" autocomplete="off" maxlength="16" placeholder="例如 123 或 cat77" />
+          <label id="twoDPreferenceRow" class="check-row hidden" for="prefer2D">
+            <input id="prefer2D" type="checkbox" />
+            <span>玩 3D 會頭暈，使用 2D 版</span>
+          </label>
           <p id="authHint">新帳號請用 1 到 10 個英文字或數字。</p>
           <div class="row">
             <button id="authSubmitButton" type="submit" class="primary-button" disabled>下一步</button>

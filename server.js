@@ -90,8 +90,8 @@ let coinCodes = structuredClone(DEFAULT_COIN_CODES);
 let titleCatalog = structuredClone(DEFAULT_TITLES);
 let chatLog = [];
 let worldCoins = makeWorldCoins(80);
-let survivalPickups = makeSurvivalPickups();
-let survivalHazards = makeSurvivalHazards();
+let survivalPickups = [];
+let survivalHazards = [];
 let worldBushes = makeHiddenBushes();
 
 await loadData();
@@ -194,6 +194,7 @@ async function loadData() {
       account.survivalMode ??= account.isHost ? "host" : null;
       account.hunger ??= 100;
       account.thirst ??= 100;
+      account.prefers2D ??= false;
       if (!Array.isArray(account.claimedLevelRewards)) {
         account.claimedLevelRewards = [];
         changedAccounts = true;
@@ -275,7 +276,7 @@ function handleMessage(socket, message) {
   const sessionId = sockets.get(socket);
   const session = sessions.get(sessionId);
 
-  if (message.type === "createAccount") return createNewAccount(socket, message.code);
+  if (message.type === "createAccount") return createNewAccount(socket, message.code, Boolean(message.prefers2D));
   if (message.type === "login") return loginAccount(socket, message.code, message.hostPassword);
   if (message.type === "guest") return enterWorld(socket, makeGuestAccount(), false);
 
@@ -429,7 +430,7 @@ function handleMessage(socket, message) {
   }
 }
 
-function createNewAccount(socket, rawCode) {
+function createNewAccount(socket, rawCode, prefers2D = false) {
   const code = String(rawCode || "").trim();
   if (code !== HOST_CODE && !isValidNewAccountCode(code)) {
     send(socket, "authError", { message: "帳號只能是 1 到 10 個英文字或數字。" });
@@ -439,7 +440,7 @@ function createNewAccount(socket, rawCode) {
     send(socket, "authError", { message: "這個帳號已存在，請改一串亂碼。" });
     return;
   }
-  accounts[code] = createAccount(code);
+  accounts[code] = createAccount(code, { prefers2D });
   saveAccounts();
   enterWorld(socket, accounts[code], true, { announceNewAccount: true });
 }
@@ -531,15 +532,14 @@ function sanitizeInput(input = {}, hasWings) {
 function tickWorld() {
   updateSwing(1 / TICK_RATE);
   updateFerris(1 / TICK_RATE);
-  updateSurvivalWorld(1 / TICK_RATE);
   for (const session of sessions.values()) {
     updatePlayer(session, 1 / TICK_RATE);
   }
   const richestCode = richestDiamondAccountCode([...sessions.values()].map((session) => session.account));
   broadcast("state", {
     coins: worldCoins,
-    survivalPickups,
-    survivalHazards,
+    survivalPickups: [],
+    survivalHazards: [],
     totalAccounts: Object.keys(accounts).length,
     bushes: worldBushes,
     swing: SWING,
@@ -561,6 +561,7 @@ function tickWorld() {
       survivalMode: session.account.survivalMode,
       hunger: session.account.hunger,
       thirst: session.account.thirst,
+      prefers2D: Boolean(session.account.prefers2D),
       title: titleCatalog[session.account.equipped?.title] || DEFAULT_TITLES[DEFAULT_TITLE_ID],
       catVariant: session.account.catVariant,
       equipped: session.account.equipped,
@@ -670,9 +671,6 @@ function updatePlayer(session, dt) {
   player.z = clamp(player.z, -limit, limit);
   player.y = clamp(player.y, floorY, 60);
   collectNearbyCoins(session);
-  collectNearbySurvivalPickups(session);
-  drinkFromRiver(session);
-  handleHazardHits(session);
 }
 
 function updateSurvivalWorld(dt) {
@@ -843,9 +841,6 @@ function handleAttack(session) {
   const target = findPlayerInFront(session, 4);
   session.player.attackUntil = Date.now() + 450;
   if (!target) {
-    const canHitMonster = session.account.isHost || session.account.survivalMode === "adult";
-    const monster = canHitMonster ? findMonsterInFront(session, 5) : null;
-    if (monster) hitMonster(session, monster);
     return;
   }
   const dx = target.player.x - session.player.x;

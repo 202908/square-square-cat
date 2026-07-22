@@ -42,6 +42,8 @@ const els = {
   authLabel: document.querySelector("#authLabel"),
   authHint: document.querySelector("#authHint"),
   accountCode: document.querySelector("#accountCode"),
+  prefer2D: document.querySelector("#prefer2D"),
+  twoDPreferenceRow: document.querySelector("#twoDPreferenceRow"),
   authSubmitButton: document.querySelector("#authSubmitButton"),
   authError: document.querySelector("#authError"),
   cancelAuth: document.querySelector("#cancelAuth"),
@@ -172,7 +174,9 @@ function bindUi() {
   });
   els.authForm.addEventListener("submit", (event) => {
     event.preventDefault();
-    if (send(state.authMode === "create" ? "createAccount" : "login", { code: els.accountCode.value })) {
+    const payload = { code: els.accountCode.value };
+    if (state.authMode === "create") payload.prefers2D = els.prefer2D.checked;
+    if (send(state.authMode === "create" ? "createAccount" : "login", payload)) {
       showAuthStatus("正在登入...", false);
     }
   });
@@ -247,6 +251,7 @@ function bindUi() {
 
 function bindCameraDrag() {
   els.canvas.addEventListener("pointerdown", (event) => {
+    if (is2DMode()) return;
     if (event.button !== undefined && event.button !== 0) return;
     state.cameraDrag = { active: true, pointerId: event.pointerId, x: event.clientX };
     els.canvas.setPointerCapture(event.pointerId);
@@ -283,6 +288,8 @@ function openAuthForm(mode) {
   els.authForm.classList.remove("hidden");
   els.authError.classList.add("hidden");
   els.accountCode.value = "";
+  els.prefer2D.checked = false;
+  els.twoDPreferenceRow.classList.toggle("hidden", mode !== "create");
   els.authLabel.textContent = mode === "create" ? "創建新帳號亂碼" : "輸入已有帳號亂碼";
   els.authHint.textContent = mode === "create"
     ? "新帳號請用 1 到 10 個英文字或數字。"
@@ -372,6 +379,7 @@ function updateAccount(message) {
   els.diamondAmount.textContent = state.account.isHost ? "鑽石 ∞" : `鑽石 ${Number(state.account.diamonds || 0)}`;
   els.onlinePlayersButton.classList.toggle("hidden", !state.account.isHost);
   els.adminButton.classList.toggle("hidden", !state.account.isHost);
+  els.gameScreen.classList.toggle("mode-2d", is2DMode());
   const hasWings = clientCanFly(state.account);
   els.flyUpButton.classList.toggle("hidden", !hasWings);
   els.flyDownButton.classList.toggle("hidden", !hasWings);
@@ -385,15 +393,14 @@ function updateAccount(message) {
   if (!els.modal.classList.contains("hidden") && els.modalTitle.textContent === "新增 Password") {
     showAdminModal();
   }
-  if (!state.account.isHost && !state.account.survivalMode) {
-    showSurvivalModeModal();
-  } else if (shouldShowAdultIntro()) {
-    showAdultIntroModal();
-  }
 }
 
 function clientCanFly(account) {
   return String(account?.equipped?.clothes || "").includes("wings");
+}
+
+function is2DMode() {
+  return Boolean(state.account?.prefers2D);
 }
 
 function initThree() {
@@ -667,15 +674,7 @@ function updateTeamStatus(me) {
 }
 
 function updateSurvivalHud(me) {
-  const show = me?.survivalMode === "adult";
-  els.survivalHud.classList.toggle("hidden", !show);
-  if (!show) return;
-  const hunger = Math.round(Number(me.hunger ?? 100));
-  const thirst = Math.round(Number(me.thirst ?? 100));
-  els.hungerText.textContent = `飽 ${hunger}%`;
-  els.thirstText.textContent = `水 ${thirst}%`;
-  els.survivalHud.style.setProperty("--hunger", `${hunger}%`);
-  els.survivalHud.style.setProperty("--thirst", `${thirst}%`);
+  els.survivalHud.classList.add("hidden");
 }
 
 function updateActionButtons(me, houses, bushes = [], hazards = []) {
@@ -684,11 +683,7 @@ function updateActionButtons(me, houses, bushes = [], hazards = []) {
     if (player.id === state.myId || player.location !== me.location) return false;
     return Math.hypot(player.x - me.x, player.z - me.z) < 4.5;
   });
-  const canSeeMonsters = me.isHost || me.survivalMode === "adult";
-  const nearMonster = canSeeMonsters && hazards.some((hazard) => {
-    if (hazard.dead) return false;
-    return Math.hypot(hazard.x - me.x, hazard.z - me.z) < 5.5;
-  });
+  const nearMonster = false;
   const ownHouse = houses.find((house) => house.owner === state.account?.code);
   const nearHouse = ownHouse && Math.hypot(ownHouse.x - me.x, ownHouse.z - me.z) < 6;
   const nearSwing = Math.hypot(12 - me.x, -28 - me.z) < 7;
@@ -919,8 +914,7 @@ function createSurvivalPickupMesh(kind) {
 }
 
 function updateHazardMeshes(hazards, me) {
-  const canSeeMonsters = me?.isHost || me?.survivalMode === "adult";
-  const activeHazards = canSeeMonsters ? hazards.filter((hazard) => !hazard.dead) : [];
+  const activeHazards = [];
   const ids = new Set(activeHazards.map((hazard) => hazard.id));
   for (const [id, mesh] of state.hazardMeshes) {
     if (!ids.has(id)) {
@@ -1400,8 +1394,7 @@ function updateChallengeStage(level = 1) {
 function updateCatMesh(mesh, player) {
   mesh.position.set(player.x, player.y, player.z);
   mesh.rotation.y = player.yaw;
-  const baseScale = player.survivalMode === "adult" ? 1.15 : 1;
-  mesh.scale.setScalar(baseScale * (player.id === state.myId ? 1.12 : 1));
+  mesh.scale.setScalar(player.id === state.myId ? 1.12 : 1);
   if (mesh.userData.tail) {
     updateTailMesh(mesh.userData.tail, player.equipped?.tail);
   }
@@ -1671,15 +1664,21 @@ function animate() {
   clock.getDelta();
   const me = state.players.get(state.myId);
   if (me) {
-    const distance = 15.8;
-    const baseYaw = -0.6 + state.cameraYaw;
-    const target = new THREE.Vector3(
-      me.x + Math.sin(baseYaw) * distance,
-      me.y + 8,
-      me.z + Math.cos(baseYaw) * distance
-    );
-    camera.position.lerp(target, 0.08);
-    camera.lookAt(me.x, me.y + 1, me.z);
+    if (is2DMode()) {
+      const target = new THREE.Vector3(me.x, me.y + 6.5, me.z + 28);
+      camera.position.lerp(target, 0.12);
+      camera.lookAt(me.x, me.y + 1.1, me.z);
+    } else {
+      const distance = 15.8;
+      const baseYaw = -0.6 + state.cameraYaw;
+      const target = new THREE.Vector3(
+        me.x + Math.sin(baseYaw) * distance,
+        me.y + 8,
+        me.z + Math.cos(baseYaw) * distance
+      );
+      camera.position.lerp(target, 0.08);
+      camera.lookAt(me.x, me.y + 1, me.z);
+    }
   } else {
     camera.position.set(0, 16, 32);
     camera.lookAt(0, 0, 0);
@@ -1706,10 +1705,17 @@ function sendInput() {
   if (state.keys.has("ArrowDown") || state.keys.has("KeyS")) localZ += 1;
   localX += state.joystick.x;
   localZ += state.joystick.z;
+  if (is2DMode()) localZ = 0;
   const length = Math.hypot(localX, localZ);
   if (length > 1) {
     localX /= length;
     localZ /= length;
+  }
+  if (is2DMode()) {
+    input.x = localX;
+    input.z = 0;
+    state.socket.send(JSON.stringify({ type: "input", input }));
+    return;
   }
   const cameraAngle = -0.6 + state.cameraYaw;
   const forwardX = -Math.sin(cameraAngle);

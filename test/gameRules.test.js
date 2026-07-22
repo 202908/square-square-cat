@@ -53,10 +53,16 @@ test("player account gets one allowed cat skin at creation", () => {
   const account = createAccount("abc");
   assert.equal(CAT_VARIANTS.includes(account.catVariant), true);
   assert.equal(account.diamonds, 0);
+  assert.equal(account.prefers2D, false);
   assert.deepEqual(account.giftInbox, []);
   assert.equal(account.equipped.title, DEFAULT_TITLE_ID);
   assert.equal(account.titles.includes(DEFAULT_TITLE_ID), true);
   assert.deepEqual(DEFAULT_TITLES[DEFAULT_TITLE_ID], { id: DEFAULT_TITLE_ID, name: "新手貓貓", color: "black" });
+});
+
+test("player account can remember a 2D display preference", () => {
+  const account = createAccount("flatcat", { prefers2D: true });
+  assert.equal(account.prefers2D, true);
 });
 
 test("built-in achievement titles have the requested names and colors", () => {
@@ -261,29 +267,29 @@ test("richest diamond account uses diamonds and breaks ties by code", () => {
   assert.equal(richestDiamondAccountCode([a, b, c]), "bbb");
 });
 
-test("adult survival stats drain and child stats do not", () => {
+test("survival stats no longer drain for adult or child modes", () => {
   const adult = createAccount("adult", { survivalMode: "adult", hunger: 80, thirst: 70 });
   const child = createAccount("child", { survivalMode: "child", hunger: 80, thirst: 70 });
 
   const adultResult = updateSurvivalStats(adult, 10);
   const childResult = updateSurvivalStats(child, 10);
 
-  assert.equal(adultResult.account.hunger < 80, true);
-  assert.equal(adultResult.account.thirst < 70, true);
+  assert.equal(adultResult.account.hunger, 80);
+  assert.equal(adultResult.account.thirst, 70);
   assert.equal(childResult.account.hunger, 80);
   assert.equal(childResult.account.thirst, 70);
 });
 
-test("adult survival death resets hunger and thirst", () => {
+test("survival stats no longer cause death", () => {
   const adult = createAccount("adult", { survivalMode: "adult", hunger: 1, thirst: 1 });
   const result = updateSurvivalStats(adult, 100);
 
-  assert.equal(result.died, true);
-  assert.equal(result.account.hunger, 100);
-  assert.equal(result.account.thirst, 100);
+  assert.equal(result.died, false);
+  assert.equal(result.account.hunger, 1);
+  assert.equal(result.account.thirst, 1);
 });
 
-test("adult players lose thirst from attacks but child and host do not", () => {
+test("attacks no longer reduce thirst for any mode", () => {
   const adult = createAccount("adult", { survivalMode: "adult", thirst: 50 });
   const child = createAccount("child", { survivalMode: "child", thirst: 50 });
   const host = createAccount("host", { isHost: true, survivalMode: "host", thirst: 50 });
@@ -292,7 +298,7 @@ test("adult players lose thirst from attacks but child and host do not", () => {
   const childResult = damageAdultThirst(child, 18);
   const hostResult = damageAdultThirst(host, 18);
 
-  assert.equal(adultResult.account.thirst, 32);
+  assert.equal(adultResult.account.thirst, 50);
   assert.equal(childResult.account.thirst, 50);
   assert.equal(hostResult.account.thirst, 50);
 });
