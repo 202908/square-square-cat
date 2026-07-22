@@ -211,7 +211,18 @@ export const SHOP_ITEMS = [
   ...HOUSE_PAINT_ITEMS,
   ...EXTRA_NON_FURNITURE_ITEMS,
   ...FURNITURE_ITEMS
-];
+].map((item) => {
+  if (["wings", "angel-wings", "butterfly-wings", "snow-wings", "crystal-armor", "ufo-pack", "rocket-pack"].includes(item.id)) {
+    return { ...item, diamondPrice: Math.max(2, Math.ceil(item.price / 350)) };
+  }
+  if (item.type === "house-paint" && ["rainbow", "ruby-violet-blue", "starry-night"].includes(item.paint?.id)) {
+    return { ...item, diamondPrice: Math.max(1, Math.ceil(item.price / 260)) };
+  }
+  if (item.type === "pet" || item.type === "trail") {
+    return { ...item, diamondPrice: Math.max(1, Math.ceil(item.price / 420)) };
+  }
+  return item;
+});
 
 function loadLocalEnv() {
   if ((process.env.HOST_ACCOUNT_CODE && process.env.HOST_PASSWORD) || !existsSync(".env")) return;
@@ -244,7 +255,7 @@ export function createAccount(code, overrides = {}) {
     code: accountCode,
     level: isHost ? null : 1,
     coins: isHost ? 999999999 : 0,
-    diamonds: 0,
+    diamonds: isHost ? 999999999 : 0,
     isHost,
     catVariant: isHost ? "host" : pickRandomCatVariant(),
     inventory: [],
@@ -317,12 +328,18 @@ export function buyItem(account, itemId) {
   if (account.inventory.includes(itemId)) {
     return { ok: false, message: "你已經有這個商品了。" };
   }
-  if (!account.isHost && account.coins < item.price) {
+  const usesDiamonds = Number(item.diamondPrice || 0) > 0;
+  if (!account.isHost && usesDiamonds && Number(account.diamonds || 0) < item.diamondPrice) {
+    return { ok: false, message: "鑽石不夠。" };
+  }
+  if (!account.isHost && !usesDiamonds && account.coins < item.price) {
     return { ok: false, message: "金幣不夠。" };
   }
 
   const nextAccount = structuredClone(account);
-  if (!nextAccount.isHost) {
+  if (!nextAccount.isHost && usesDiamonds) {
+    nextAccount.diamonds -= item.diamondPrice;
+  } else if (!nextAccount.isHost) {
     nextAccount.coins -= item.price;
   }
   nextAccount.inventory.push(itemId);
@@ -416,7 +433,44 @@ export function sendCoinGift(sender, recipient, rawAmount, giftDetails = {}) {
   };
 }
 
+export function sendDiamondGift(sender, recipient, rawAmount, giftDetails = {}) {
+  const amount = Math.floor(Number(rawAmount));
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return { ok: false, message: "請輸入要送出的鑽石數量。" };
+  }
+  if (amount > 9999) {
+    return { ok: false, message: "一次最多可以送 9999 顆鑽石。" };
+  }
+  if (!sender.friends.includes(recipient.code)) {
+    return { ok: false, message: "只能送給你的好友。" };
+  }
+  if (!sender.isHost && Number(sender.diamonds || 0) < amount) {
+    return { ok: false, message: "鑽石不夠，不能送出。" };
+  }
+
+  const nextSender = structuredClone(sender);
+  const nextRecipient = structuredClone(recipient);
+  if (!nextSender.isHost) nextSender.diamonds -= amount;
+  nextRecipient.giftInbox ||= [];
+  nextRecipient.giftInbox.push({
+    id: giftDetails.id || null,
+    from: nextSender.code,
+    kind: "diamonds",
+    diamonds: amount,
+    sentAt: giftDetails.sentAt || null
+  });
+
+  return {
+    ok: true,
+    sender: nextSender,
+    recipient: nextRecipient,
+    message: `已送出 ${amount} 顆鑽石。`
+  };
+}
+
 export function challengeLevelForAccounts(accounts) {
+  const hasOnlyHosts = accounts.length > 0 && accounts.every((account) => account.isHost);
+  if (hasOnlyHosts) return 25;
   const levels = accounts
     .map((account) => Number(account.level))
     .filter((level) => Number.isFinite(level) && level > 0);

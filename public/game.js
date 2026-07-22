@@ -86,7 +86,7 @@ const CHALLENGE_PLATFORMS = [
   { x: -12, y: 13.8, z: 34, w: 8, d: 7, color: 0xbfe8ff },
   { x: -2, y: 17, z: 27, w: 9, d: 7, color: 0xd9c7ff }
 ];
-const CHALLENGE_START = { x: -220, y: 1.2, z: 0 };
+const CHALLENGE_BASE = { x: -760, y: 1.2, z: -720 };
 const CHALLENGE_STAGE_COLORS = [0xffc5dc, 0xbfe8ff, 0xd9c7ff];
 const HOUSE_PAINT_LOOKS = {
   red: { color: 0xff5a6c },
@@ -297,7 +297,7 @@ function updateAccount(message) {
   els.accountName.textContent = state.account.code;
   els.levelText.textContent = state.account.isHost ? "主機" : `Lv. ${state.account.level}`;
   els.coinAmount.textContent = state.account.isHost ? "金幣 ∞" : `金幣 ${state.account.coins}`;
-  els.diamondAmount.textContent = `鑽石 ${Number(state.account.diamonds || 0)}`;
+  els.diamondAmount.textContent = state.account.isHost ? "鑽石 ∞" : `鑽石 ${Number(state.account.diamonds || 0)}`;
   els.onlinePlayersButton.classList.toggle("hidden", !state.account.isHost);
   els.adminButton.classList.toggle("hidden", !state.account.isHost);
   const hasWings = clientCanFly(state.account);
@@ -1037,19 +1037,29 @@ function updateSwingMesh(swing) {
 
 function getChallengePlatforms(level = 1) {
   const difficulty = Math.max(1, Number(level || 1));
+  const start = challengeStartForLevel(difficulty);
   const stepX = 8 + Math.min(4.5, difficulty * 0.35);
   const stepY = 1.8 + Math.min(2.4, difficulty * 0.16);
   const zSpread = 3 + Math.min(10, difficulty * 0.65);
   const width = Math.max(6.5, 13 - difficulty * 0.35);
   const depth = Math.max(5.5, 9 - difficulty * 0.24);
   return Array.from({ length: 7 }, (_, index) => ({
-    x: CHALLENGE_START.x + index * stepX,
-    y: CHALLENGE_START.y + index * stepY,
-    z: index === 0 ? 0 : (index % 2 === 0 ? 1 : -1) * Math.min(zSpread, 2 + index * 1.2),
+    x: start.x + index * stepX,
+    y: start.y + index * stepY,
+    z: start.z + (index === 0 ? 0 : (index % 2 === 0 ? 1 : -1) * Math.min(zSpread, 2 + index * 1.2)),
     w: index === 0 ? 17 : width,
     d: index === 0 ? 10 : depth,
     color: CHALLENGE_STAGE_COLORS[index % CHALLENGE_STAGE_COLORS.length]
   }));
+}
+
+function challengeStartForLevel(level = 1) {
+  const difficulty = Math.max(1, Number(level || 1));
+  return {
+    x: CHALLENGE_BASE.x - (difficulty - 1) * 130,
+    y: CHALLENGE_BASE.y,
+    z: CHALLENGE_BASE.z - (difficulty % 5) * 110
+  };
 }
 
 function challengeFinishForLevel(level) {
@@ -1073,7 +1083,8 @@ function updateChallengeStage(level = 1) {
     new THREE.BoxGeometry(112, 1, 68),
     new THREE.MeshStandardMaterial({ color: 0x1b2030, roughness: 0.8 })
   );
-  base.position.set(-194, -3, 0);
+  const start = challengeStartForLevel(difficulty);
+  base.position.set(start.x + 34, -3, start.z);
   challengeStageGroup.add(base);
   for (const platform of getChallengePlatforms(difficulty)) {
     const mesh = new THREE.Mesh(
@@ -1181,12 +1192,25 @@ function updatePetMesh(group, player) {
   group.clear();
   const petId = player.equipped?.pet;
   if (!petId || player.location === "challenge") return;
-  const material = new THREE.MeshStandardMaterial({ color: itemColor(petId), roughness: 0.52 });
-  const body = petId.includes("fish")
-    ? new THREE.Mesh(new THREE.ConeGeometry(0.35, 0.9, 12), material)
-    : new THREE.Mesh(new THREE.SphereGeometry(0.42, 16, 12), material);
-  body.position.set(-1.45, 0.45 + Math.sin(Date.now() * 0.004) * 0.12, -2.05);
+  const palette = catPalette(player.catVariant);
+  const material = new THREE.MeshStandardMaterial({ color: palette.body, roughness: 0.58 });
+  const faceMaterial = new THREE.MeshBasicMaterial({ color: palette.face });
+  const bob = Math.sin(Date.now() * 0.004) * 0.12;
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.56, 0.72), material);
+  body.position.set(-1.45, 0.42 + bob, -2.05);
   group.add(body);
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.52, 0.48), material);
+  head.position.set(-1.45, 0.95 + bob, -1.72);
+  group.add(head);
+  const face = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.2), faceMaterial);
+  face.position.set(-1.45, 0.95 + bob, -1.47);
+  group.add(face);
+  [-0.22, 0.22].forEach((x) => {
+    const ear = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.26, 4), material);
+    ear.position.set(-1.45 + x, 1.32 + bob, -1.75);
+    ear.rotation.y = Math.PI / 4;
+    group.add(ear);
+  });
 }
 
 function itemColor(itemId) {
@@ -1202,20 +1226,30 @@ function updateTrail(mesh, player) {
   if (!trailId) {
     mesh.userData.trailGroup.clear();
     points.length = 0;
+    mesh.userData.lastTrailId = null;
     return;
   }
-  points.unshift({ x: player.x, y: player.y + 0.55, z: player.z });
-  points.splice(10);
+  if (mesh.userData.lastTrailId && mesh.userData.lastTrailId !== trailId) {
+    points.length = 0;
+  }
+  mesh.userData.lastTrailId = trailId;
+  const now = Date.now();
+  const last = points[0];
+  if (!last || Math.hypot(last.x - player.x, last.z - player.z) > 0.45 || now - last.time > 350) {
+    points.unshift({ x: player.x, y: player.y + 0.55, z: player.z, time: now });
+  }
+  while (points.length && now - points.at(-1).time > 10000) points.pop();
   mesh.userData.trailGroup.clear();
   points.slice(2).forEach((point, index) => {
-    const meshlet = createTrailParticle(trailId, index);
+    const ageRatio = Math.min(1, (now - point.time) / 10000);
+    const meshlet = createTrailParticle(trailId, index, ageRatio);
     meshlet.position.set(point.x - player.x, point.y - player.y, point.z - player.z);
     mesh.userData.trailGroup.add(meshlet);
   });
 }
 
-function createTrailParticle(trailId, index) {
-  const opacity = Math.max(0.16, 0.42 - index * 0.035);
+function createTrailParticle(trailId, index, ageRatio = 0) {
+  const opacity = Math.max(0.04, 0.5 * (1 - ageRatio));
   const material = new THREE.MeshBasicMaterial({
     color: trailColor(trailId, index),
     transparent: true,
@@ -1343,7 +1377,7 @@ function showShopModal() {
     <div class="list-item">
       <div class="split">
         <strong>${item.name}</strong>
-        <span>${item.price} 金幣 · ${item.type || "裝備"}</span>
+        <span>${priceText(item)} · ${item.type || "裝備"}</span>
       </div>
       <button data-buy="${item.id}">購買</button>
     </div>
@@ -1351,6 +1385,10 @@ function showShopModal() {
   document.querySelectorAll("[data-buy]").forEach((button) => {
     button.addEventListener("click", () => send("buy", { itemId: button.dataset.buy }));
   });
+}
+
+function priceText(item) {
+  return item.diamondPrice ? `${item.diamondPrice} 鑽石` : `${item.price} 金幣`;
 }
 
 function showBagModal() {
@@ -1396,11 +1434,12 @@ function showFriendsModal() {
     <div class="list">
       ${gifts.map((gift) => {
         const isCoinGift = gift.kind === "coins";
-        const item = isCoinGift ? null : state.shopItems.find((candidate) => candidate.id === gift.itemId);
+        const isDiamondGift = gift.kind === "diamonds";
+        const item = isCoinGift || isDiamondGift ? null : state.shopItems.find((candidate) => candidate.id === gift.itemId);
         return `
           <div class="list-item">
             <div class="split">
-              <strong>${isCoinGift ? `${gift.coins} 金幣` : (item?.name || gift.itemId)}</strong>
+              <strong>${isCoinGift ? `${gift.coins} 金幣` : isDiamondGift ? `${gift.diamonds} 顆鑽石` : (item?.name || gift.itemId)}</strong>
               <span>來自 ${escapeHtml(gift.from)}</span>
             </div>
             <div class="row">
@@ -1449,12 +1488,17 @@ function showGiftShop(friendCode) {
       <input id="coinGiftAmount" inputmode="numeric" maxlength="6" placeholder="輸入金幣數量" />
       <button class="primary-button" type="submit">送出金幣</button>
     </form>
+    <form id="diamondGiftForm" class="panel list">
+      <strong>送鑽石</strong>
+      <input id="diamondGiftAmount" inputmode="numeric" maxlength="4" placeholder="輸入鑽石數量" />
+      <button class="primary-button" type="submit">送出鑽石</button>
+    </form>
     <div class="list">
       ${state.shopItems.map((item) => `
         <div class="list-item">
           <div class="split">
             <strong>${item.name}</strong>
-            <span>${item.price} 金幣</span>
+            <span>${priceText(item)}</span>
           </div>
           <button data-send-gift="${item.id}" class="primary-button">送這個</button>
         </div>
@@ -1466,6 +1510,14 @@ function showGiftShop(friendCode) {
     send("sendCoinGift", {
       friendCode,
       coins: document.querySelector("#coinGiftAmount").value
+    });
+    closeModal();
+  });
+  document.querySelector("#diamondGiftForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    send("sendDiamondGift", {
+      friendCode,
+      diamonds: document.querySelector("#diamondGiftAmount").value
     });
     closeModal();
   });

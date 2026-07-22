@@ -12,7 +12,8 @@ import {
   equipItem,
   isValidNewAccountCode,
   redeemCode,
-  sendCoinGift
+  sendCoinGift,
+  sendDiamondGift
 } from "../src/gameRules.js";
 
 const TEST_CODE_BOOK = {
@@ -88,6 +89,14 @@ test("shopping and equipping updates inventory and slot", () => {
   assert.equal(equipped.account.equipped.hat, "star-hat");
 });
 
+test("some fancy shop items can be bought with diamonds", () => {
+  const account = createAccount("abc", { diamonds: 10 });
+  const purchase = buyItem(account, "wings");
+  assert.equal(purchase.ok, true);
+  assert.equal(purchase.account.inventory.includes("wings"), true);
+  assert.equal(purchase.account.diamonds < 10, true);
+});
+
 test("house paint can be applied after the player has a house", () => {
   const account = createAccount("abc", {
     inventory: ["house-body-paint-ruby-violet-blue", "house-roof-paint-starry-night"],
@@ -139,6 +148,22 @@ test("coin gifts require enough coins unless the sender is host", () => {
   assert.equal(hostGift.sender.coins, 999999999);
 });
 
+test("diamond gifts deduct sender diamonds and wait in the friend's inbox", () => {
+  const sender = createAccount("abc", { diamonds: 5, friends: ["def"] });
+  const recipient = createAccount("def");
+  const result = sendDiamondGift(sender, recipient, 2, { id: "diamond-gift", sentAt: 123 });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.sender.diamonds, 3);
+  assert.deepEqual(result.recipient.giftInbox, [{
+    id: "diamond-gift",
+    from: "abc",
+    kind: "diamonds",
+    diamonds: 2,
+    sentAt: 123
+  }]);
+});
+
 test("challenge level uses the lowest player level in a team", () => {
   const levelNine = createAccount("nine", { level: 9 });
   const levelOne = createAccount("one", { level: 1 });
@@ -148,6 +173,7 @@ test("challenge level uses the lowest player level in a team", () => {
 
   assert.equal(challengeLevelForAccounts([levelNine, levelOne]), 1);
   assert.equal(challengeLevelForAccounts([levelThree, levelEight, levelTwo]), 2);
+  assert.equal(challengeLevelForAccounts([createAccount("host", { isHost: true })]), 25);
 });
 
 test("completing a challenge gives coins and raises level", () => {

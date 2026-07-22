@@ -21,7 +21,8 @@ import {
   isValidNewAccountCode,
   makeGuestAccount,
   redeemCode,
-  sendCoinGift
+  sendCoinGift,
+  sendDiamondGift
 } from "./src/gameRules.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -40,7 +41,7 @@ const CHALLENGE_PLATFORMS = [
   { x: -12, y: 13.8, z: 34, w: 8, d: 7 },
   { x: -2, y: 17, z: 27, w: 9, d: 7 }
 ];
-const CHALLENGE_START = { x: -220, y: 1.2, z: 0 };
+const CHALLENGE_BASE = { x: -760, y: 1.2, z: -720 };
 const SOLID_FLOORS = [
   { x: -28, y: 5.5, z: -20, w: 7, d: 6 },
   ...Array.from({ length: 5 }, (_, i) => ({ x: -33.2, y: 0.98 + i * 0.8, z: -21.8 + i * 0.12, w: 3.2, d: 0.7 })),
@@ -115,6 +116,7 @@ async function loadData() {
     for (const account of Object.values(accounts)) {
       account.isHost = Boolean(HOST_CODE && account.code === HOST_CODE);
       if (account.isHost) account.coins = 999999999;
+      if (account.isHost) account.diamonds = 999999999;
       if (account.isHost) account.level = null;
       account.diamonds ??= 0;
       account.equipped ||= { hat: null, clothes: null, tail: null, trail: null };
@@ -254,6 +256,9 @@ function handleMessage(socket, message) {
       break;
     case "sendCoinGift":
       handleSendCoinGift(socket, session, message.friendCode, message.coins);
+      break;
+    case "sendDiamondGift":
+      handleSendDiamondGift(socket, session, message.friendCode, message.diamonds);
       break;
     case "acceptGift":
       handleAcceptGift(socket, session, message.giftId);
@@ -512,9 +517,10 @@ function updateChallengePlayer(session, dt) {
   player.z += player.vz * dt;
   const floorY = challengeFloorHeightAt(player.x, player.y, player.z, player.challengeLevel);
   if (player.y < -12) {
-    player.x = CHALLENGE_START.x;
+    const start = challengeStartForLevel(player.challengeLevel);
+    player.x = start.x;
     player.y = 3;
-    player.z = CHALLENGE_START.z;
+    player.z = start.z;
     player.vy = 0;
   } else if (player.y <= floorY) {
     player.y = floorY;
@@ -525,8 +531,9 @@ function updateChallengePlayer(session, dt) {
     completeChallengeForTeam(session);
     return;
   }
-  player.x = clamp(player.x, -236, -144);
-  player.z = clamp(player.z, -28, 28);
+  const start = challengeStartForLevel(player.challengeLevel);
+  player.x = clamp(player.x, start.x - 18, start.x + 86);
+  player.z = clamp(player.z, start.z - 32, start.z + 32);
 }
 
 function updateRoomPlayer(session, dt) {
@@ -764,11 +771,20 @@ function handleSendGift(socket, session, friendCode, itemId) {
     send(socket, "notice", { message: "只能送給你的好友。" });
     return;
   }
-  if (!session.account.isHost && session.account.coins < item.price) {
+  const usesDiamonds = Number(item.diamondPrice || 0) > 0;
+  if (!session.account.isHost && usesDiamonds && Number(session.account.diamonds || 0) < item.diamondPrice) {
+    send(socket, "notice", { message: "鑽石不夠，不能送這個禮物。" });
+    return;
+  }
+  if (!session.account.isHost && !usesDiamonds && session.account.coins < item.price) {
     send(socket, "notice", { message: "金幣不夠，不能送這個禮物。" });
     return;
   }
-  if (!session.account.isHost) session.account.coins -= item.price;
+  if (!session.account.isHost && usesDiamonds) {
+    session.account.diamonds -= item.diamondPrice;
+  } else if (!session.account.isHost) {
+    session.account.coins -= item.price;
+  }
   recipient.giftInbox ||= [];
   recipient.giftInbox.push({
     id: makeId(),
@@ -826,6 +842,39 @@ function handleSendCoinGift(socket, session, friendCode, coins) {
   }
 }
 
+function handleSendDiamondGift(socket, session, friendCode, diamonds) {
+  const code = String(friendCode || "").trim();
+  const recipient = accounts[code];
+  if (!recipient) {
+    send(socket, "notice", { message: "只能送給你的好友。" });
+    return;
+  }
+
+  const result = sendDiamondGift(session.account, recipient, diamonds, { id: makeId(), sentAt: Date.now() });
+  if (!result.ok) {
+    send(socket, "notice", { message: result.message });
+    return;
+  }
+
+  session.account = result.sender;
+  accounts[session.account.code] = structuredClone(session.account);
+  accounts[code] = result.recipient;
+  saveAccounts();
+  send(socket, "account", { account: session.account, shopItems: SHOP_ITEMS, coinCodes: session.account.isHost ? coinCodes : undefined });
+  send(socket, "notice", { message: result.message });
+
+  const onlineRecipient = [...sessions.values()].find((candidate) => candidate.account.code === code);
+  if (onlineRecipient) {
+    onlineRecipient.account = structuredClone(result.recipient);
+    send(onlineRecipient.socket, "account", {
+      account: onlineRecipient.account,
+      shopItems: SHOP_ITEMS,
+      coinCodes: onlineRecipient.account.isHost ? coinCodes : undefined
+    });
+    send(onlineRecipient.socket, "notice", { message: `${displayNameFor(session.account)} 送了你鑽石。` });
+  }
+}
+
 function handleAcceptGift(socket, session, giftId) {
   const gift = (session.account.giftInbox || []).find((candidate) => candidate.id === giftId);
   if (!gift) {
@@ -838,6 +887,14 @@ function handleAcceptGift(socket, session, giftId) {
     persistSessionAccount(session);
     send(socket, "account", { account: session.account, shopItems: SHOP_ITEMS, coinCodes: session.account.isHost ? coinCodes : undefined });
     send(socket, "notice", { message: `已收下 ${gift.coins} 金幣。` });
+    return;
+  }
+  if (gift.kind === "diamonds") {
+    if (!session.account.isHost) session.account.diamonds = Number(session.account.diamonds || 0) + Math.max(0, Math.floor(Number(gift.diamonds || 0)));
+    session.account.giftInbox = session.account.giftInbox.filter((candidate) => candidate.id !== giftId);
+    persistSessionAccount(session);
+    send(socket, "account", { account: session.account, shopItems: SHOP_ITEMS, coinCodes: session.account.isHost ? coinCodes : undefined });
+    send(socket, "notice", { message: `已收下 ${gift.diamonds} 顆鑽石。` });
     return;
   }
   const item = SHOP_ITEMS.find((candidate) => candidate.id === gift.itemId);
@@ -857,6 +914,9 @@ function handleReturnGift(socket, session, giftId) {
   const sender = accounts[gift.from];
   if (sender && gift.kind === "coins") {
     if (!sender.isHost) sender.coins += Math.max(0, Math.floor(Number(gift.coins || 0)));
+    accounts[gift.from] = sender;
+  } else if (sender && gift.kind === "diamonds") {
+    if (!sender.isHost) sender.diamonds = Number(sender.diamonds || 0) + Math.max(0, Math.floor(Number(gift.diamonds || 0)));
     accounts[gift.from] = sender;
   } else if (sender) {
     sender.inventory.push(gift.itemId);
@@ -911,6 +971,7 @@ function handleLeaveTeam(socket, session) {
 function handleEnterChallenge(socket, session) {
   const members = getTeamSessions(session);
   const challengeLevel = challengeLevelForAccounts(members.map((member) => member.account));
+  const start = challengeStartForLevel(challengeLevel);
   members.forEach((member, index) => {
     if (member.player.ride === "swing") {
       SWING.riders = SWING.riders.filter((id) => id !== member.id);
@@ -920,9 +981,9 @@ function handleEnterChallenge(socket, session) {
     detachFromStack(member.player);
     member.player.location = "challenge";
     member.player.challengeLevel = challengeLevel;
-    member.player.x = CHALLENGE_START.x + index * 2.2;
+    member.player.x = start.x + index * 2.2;
     member.player.y = 3;
-    member.player.z = CHALLENGE_START.z + index * 1.8;
+    member.player.z = start.z + index * 1.8;
     member.player.vx = 0;
     member.player.vy = 0;
     member.player.vz = 0;
@@ -948,18 +1009,28 @@ function getTeamSessions(session) {
 
 function getChallengePlatforms(level = 1) {
   const difficulty = Math.max(1, Number(level || 1));
+  const start = challengeStartForLevel(difficulty);
   const stepX = 8 + Math.min(4.5, difficulty * 0.35);
   const stepY = 1.8 + Math.min(2.4, difficulty * 0.16);
   const zSpread = 3 + Math.min(10, difficulty * 0.65);
   const width = Math.max(6.5, 13 - difficulty * 0.35);
   const depth = Math.max(5.5, 9 - difficulty * 0.24);
   return Array.from({ length: 7 }, (_, index) => ({
-    x: CHALLENGE_START.x + index * stepX,
-    y: CHALLENGE_START.y + index * stepY,
-    z: index === 0 ? 0 : (index % 2 === 0 ? 1 : -1) * Math.min(zSpread, 2 + index * 1.2),
+    x: start.x + index * stepX,
+    y: start.y + index * stepY,
+    z: start.z + (index === 0 ? 0 : (index % 2 === 0 ? 1 : -1) * Math.min(zSpread, 2 + index * 1.2)),
     w: index === 0 ? 17 : width,
     d: index === 0 ? 10 : depth
   }));
+}
+
+function challengeStartForLevel(level = 1) {
+  const difficulty = Math.max(1, Number(level || 1));
+  return {
+    x: CHALLENGE_BASE.x - (difficulty - 1) * 130,
+    y: CHALLENGE_BASE.y,
+    z: CHALLENGE_BASE.z - (difficulty % 5) * 110
+  };
 }
 
 function challengeFinishForLevel(level) {
