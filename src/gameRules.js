@@ -224,6 +224,20 @@ export const SHOP_ITEMS = [
   return item;
 });
 
+export const LEVEL_REWARDS = [
+  { level: 2, coins: 120, diamonds: 0, itemId: null },
+  { level: 3, coins: 180, diamonds: 0, itemId: null },
+  { level: 5, coins: 320, diamonds: 1, itemId: null },
+  { level: 7, coins: 420, diamonds: 1, itemId: "star-hat" },
+  { level: 10, coins: 700, diamonds: 2, itemId: "cat-pet" },
+  { level: 15, coins: 1200, diamonds: 3, itemId: "rainbow-trail" },
+  { level: 20, coins: 1800, diamonds: 5, itemId: "mini-wings" },
+  { level: 25, coins: 2600, diamonds: 8, itemId: "house-body-paint-starry-night" }
+].map((reward) => {
+  const item = reward.itemId ? SHOP_ITEMS.find((candidate) => candidate.id === reward.itemId) : null;
+  return { ...reward, itemName: item?.name || null };
+});
+
 function loadLocalEnv() {
   if ((process.env.HOST_ACCOUNT_CODE && process.env.HOST_PASSWORD) || !existsSync(".env")) return;
   const lines = readFileSync(".env", "utf8").split(/\r?\n/);
@@ -270,6 +284,7 @@ export function createAccount(code, overrides = {}) {
     roomItems: [],
     giftInbox: [],
     redeemedCodes: [],
+    claimedLevelRewards: [],
     friends: [],
     createdAt: new Date().toISOString(),
     ...overrides
@@ -479,7 +494,7 @@ export function challengeLevelForAccounts(accounts) {
 
 export function completeChallenge(account, rewardCoins = 500) {
   if (account.isHost) {
-    return { ok: true, account: structuredClone(account), message: "主機完成闖關。" };
+    return { ok: true, account: structuredClone(account), coinsAdded: 0, levelAdded: 0, message: "主機完成闖關。" };
   }
   const nextAccount = structuredClone(account);
   nextAccount.coins += rewardCoins;
@@ -487,6 +502,42 @@ export function completeChallenge(account, rewardCoins = 500) {
   return {
     ok: true,
     account: nextAccount,
+    coinsAdded: rewardCoins,
+    levelAdded: 1,
     message: `闖關成功，獲得 ${rewardCoins} 金幣，升到 Lv. ${nextAccount.level}。`
+  };
+}
+
+export function claimLevelReward(account, level) {
+  if (account.isHost) {
+    return { ok: false, message: "主機不用領等級獎勵，已經是無限資源。" };
+  }
+  const rewardLevel = Number(level);
+  const reward = LEVEL_REWARDS.find((candidate) => candidate.level === rewardLevel);
+  if (!reward) {
+    return { ok: false, message: "這個等級沒有獎勵。" };
+  }
+  if (Number(account.level || 1) < reward.level) {
+    return { ok: false, message: `要 Lv. ${reward.level} 才能領這個獎勵。` };
+  }
+  const claimed = Array.isArray(account.claimedLevelRewards) ? account.claimedLevelRewards : [];
+  if (claimed.includes(reward.level)) {
+    return { ok: false, message: "這個等級獎勵已經領過了。" };
+  }
+
+  const nextAccount = structuredClone(account);
+  nextAccount.claimedLevelRewards = [...claimed, reward.level].sort((a, b) => a - b);
+  nextAccount.coins += Number(reward.coins || 0);
+  nextAccount.diamonds = Number(nextAccount.diamonds || 0) + Number(reward.diamonds || 0);
+  if (reward.itemId && !nextAccount.inventory.includes(reward.itemId)) {
+    nextAccount.inventory.push(reward.itemId);
+  }
+
+  const itemText = reward.itemName ? `，獲得 ${reward.itemName}` : "";
+  return {
+    ok: true,
+    account: nextAccount,
+    reward,
+    message: `領到 Lv. ${reward.level} 獎勵：${reward.coins} 金幣、${reward.diamonds || 0} 鑽石${itemText}。`
   };
 }

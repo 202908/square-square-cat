@@ -9,12 +9,14 @@ import {
   DEFAULT_COIN_CODES,
   HOST_CODE,
   HOST_PASSWORD,
+  LEVEL_REWARDS,
   SHOP_ITEMS,
   addFriend,
   applyHousePaint,
   buyItem,
   canFly,
   challengeLevelForAccounts,
+  claimLevelReward,
   completeChallenge,
   createAccount,
   equipItem,
@@ -133,6 +135,10 @@ async function loadData() {
       account.house ??= null;
       account.roomItems ??= [];
       account.giftInbox ??= [];
+      if (!Array.isArray(account.claimedLevelRewards)) {
+        account.claimedLevelRewards = [];
+        changedAccounts = true;
+      }
       if (!account.catVariant) {
         account.catVariant = account.isHost ? "host" : createAccount(account.code).catVariant;
         changedAccounts = true;
@@ -234,6 +240,9 @@ function handleMessage(socket, message) {
       break;
     case "buy":
       updateAccount(socket, session, buyItem(session.account, message.itemId));
+      break;
+    case "claimLevelReward":
+      updateAccount(socket, session, claimLevelReward(session.account, message.level));
       break;
     case "equip":
       updateAccount(socket, session, equipItem(session.account, message.itemId));
@@ -396,6 +405,7 @@ function enterWorld(socket, account, persistent, options = {}) {
     id: sessionId,
     account,
     shopItems: SHOP_ITEMS,
+    levelRewards: LEVEL_REWARDS,
     coinCodes: account.isHost ? coinCodes : undefined,
     chatLog
   });
@@ -1116,12 +1126,12 @@ function completeChallengeForTeam(session) {
     member.player.vx = 0;
     member.player.vy = 0;
     member.player.vz = 0;
-    send(member.socket, "account", {
-      account: member.account,
-      shopItems: SHOP_ITEMS,
-      coinCodes: member.account.isHost ? coinCodes : undefined
+    sendAccount(member.socket, member.account);
+    broadcast("notice", {
+      message: result.levelAdded
+        ? `${displayNameFor(member.account)} 闖關成功，加了 ${result.coinsAdded} 金幣和 ${result.levelAdded} 級。`
+        : `${displayNameFor(member.account)} 闖關成功。`
     });
-    send(member.socket, "notice", { message: result.message });
   }
 }
 
@@ -1216,10 +1226,15 @@ function updateAccount(socket, session, result) {
   if (!result.ok) return;
   session.account = result.account;
   persistSessionAccount(session);
+  sendAccount(socket, session.account);
+}
+
+function sendAccount(socket, account) {
   send(socket, "account", {
-    account: session.account,
+    account,
     shopItems: SHOP_ITEMS,
-    coinCodes: session.account.isHost ? coinCodes : undefined
+    levelRewards: LEVEL_REWARDS,
+    coinCodes: account.isHost ? coinCodes : undefined
   });
 }
 

@@ -5,6 +5,7 @@ const state = {
   myId: null,
   account: null,
   shopItems: [],
+  levelRewards: [],
   coinCodes: {},
   players: new Map(),
   meshes: new Map(),
@@ -37,6 +38,7 @@ const els = {
   canvas: document.querySelector("#gameCanvas"),
   accountName: document.querySelector("#accountName"),
   levelText: document.querySelector("#levelText"),
+  levelRewardsButton: document.querySelector("#levelRewardsButton"),
   coinAmount: document.querySelector("#coinAmount"),
   diamondAmount: document.querySelector("#diamondAmount"),
   coinCodeButton: document.querySelector("#coinCodeButton"),
@@ -198,6 +200,7 @@ function bindUi() {
   });
   els.voiceButton.addEventListener("click", startVoiceInput);
   els.coinCodeButton.addEventListener("click", showCoinModal);
+  els.levelRewardsButton.addEventListener("click", showLevelRewardsModal);
   els.shopButton.addEventListener("click", showShopModal);
   els.bagButton.addEventListener("click", showBagModal);
   els.friendsButton.addEventListener("click", showFriendsModal);
@@ -297,6 +300,7 @@ function handleAuthed(message) {
 function updateAccount(message) {
   state.account = message.account;
   state.shopItems = message.shopItems || state.shopItems;
+  state.levelRewards = message.levelRewards || state.levelRewards;
   state.coinCodes = message.coinCodes || state.coinCodes;
   els.accountName.textContent = state.account.code;
   els.levelText.textContent = state.account.isHost ? "主機" : `Lv. ${state.account.level}`;
@@ -310,6 +314,9 @@ function updateAccount(message) {
   els.inviteFlyButton.classList.toggle("hidden", !hasWings);
   if (!els.modal.classList.contains("hidden") && els.modalTitle.textContent === "好友") {
     showFriendsModal();
+  }
+  if (!els.modal.classList.contains("hidden") && els.modalTitle.textContent === "等級獎勵") {
+    showLevelRewardsModal();
   }
 }
 
@@ -1202,6 +1209,8 @@ function updatePetMesh(group, player) {
   const palette = catPalette(player.catVariant);
   const material = new THREE.MeshStandardMaterial({ color: palette.body, roughness: 0.58 });
   const faceMaterial = new THREE.MeshBasicMaterial({ color: palette.face });
+  const eyeMaterial = new THREE.MeshBasicMaterial({ color: 0x1f2630 });
+  const mouthMaterial = new THREE.MeshBasicMaterial({ color: 0xff6f9f });
   const bob = Math.sin(Date.now() * 0.004) * 0.12;
   const body = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.56, 0.72), material);
   body.position.set(-1.45, 0.42 + bob, -2.05);
@@ -1212,12 +1221,26 @@ function updatePetMesh(group, player) {
   const face = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.2), faceMaterial);
   face.position.set(-1.45, 0.95 + bob, -1.47);
   group.add(face);
+  [-0.09, 0.09].forEach((x) => {
+    const eye = new THREE.Mesh(new THREE.CircleGeometry(0.035, 16), eyeMaterial);
+    eye.position.set(-1.45 + x, 1 + bob, -1.465);
+    group.add(eye);
+  });
+  const mouth = new THREE.Mesh(new THREE.TorusGeometry(0.055, 0.01, 8, 18, Math.PI), mouthMaterial);
+  mouth.position.set(-1.45, 0.91 + bob, -1.46);
+  mouth.rotation.z = Math.PI;
+  group.add(mouth);
   [-0.22, 0.22].forEach((x) => {
     const ear = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.26, 4), material);
     ear.position.set(-1.45 + x, 1.32 + bob, -1.75);
     ear.rotation.y = Math.PI / 4;
     group.add(ear);
   });
+  const tail = new THREE.Mesh(new THREE.CapsuleGeometry(0.07, 0.5, 4, 10), material);
+  tail.position.set(-1.45, 0.62 + bob, -2.48);
+  tail.rotation.x = Math.PI / 2.6;
+  tail.rotation.z = Math.sin(Date.now() * 0.006) * 0.35;
+  group.add(tail);
 }
 
 function itemColor(itemId) {
@@ -1392,6 +1415,42 @@ function showShopModal() {
   document.querySelectorAll("[data-buy]").forEach((button) => {
     button.addEventListener("click", () => send("buy", { itemId: button.dataset.buy }));
   });
+}
+
+function showLevelRewardsModal() {
+  const rewards = state.levelRewards || [];
+  const level = Number(state.account?.level || 1);
+  const claimed = new Set(state.account?.claimedLevelRewards || []);
+  openModal("等級獎勵", rewards.length ? `<div class="list">${rewards.map((reward) => {
+    const canClaim = !state.account?.isHost && level >= reward.level && !claimed.has(reward.level);
+    const status = state.account?.isHost
+      ? "主機是無限資源"
+      : claimed.has(reward.level)
+        ? "已領"
+        : level >= reward.level
+          ? "可以領"
+          : `還差 ${reward.level - level} 級`;
+    return `
+      <div class="list-item">
+        <div class="split">
+          <strong>Lv. ${reward.level}</strong>
+          <span>${status}</span>
+        </div>
+        <p class="muted-line">${levelRewardText(reward)}</p>
+        <button ${canClaim ? "" : "disabled"} data-claim-level="${reward.level}">領取</button>
+      </div>
+    `;
+  }).join("")}</div>` : "<p>現在還沒有等級獎勵。</p>");
+  document.querySelectorAll("[data-claim-level]").forEach((button) => {
+    button.addEventListener("click", () => send("claimLevelReward", { level: Number(button.dataset.claimLevel) }));
+  });
+}
+
+function levelRewardText(reward) {
+  const parts = [`${Number(reward.coins || 0)} 金幣`];
+  if (Number(reward.diamonds || 0) > 0) parts.push(`${reward.diamonds} 鑽石`);
+  if (reward.itemName) parts.push(reward.itemName);
+  return parts.join("、");
 }
 
 function priceText(item) {

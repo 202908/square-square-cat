@@ -2,11 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   CAT_VARIANTS,
+  LEVEL_REWARDS,
   SHOP_ITEMS,
   addFriend,
   applyHousePaint,
   buyItem,
   challengeLevelForAccounts,
+  claimLevelReward,
   completeChallenge,
   createAccount,
   equipItem,
@@ -183,4 +185,24 @@ test("completing a challenge gives coins and raises level", () => {
   assert.equal(result.ok, true);
   assert.equal(result.account.coins, 520);
   assert.equal(result.account.level, 5);
+});
+
+test("level rewards can be claimed once when the account reaches that level", () => {
+  const reward = LEVEL_REWARDS.find((candidate) => candidate.level === 5);
+  const account = createAccount("abc", { level: 5, coins: 10, diamonds: 0 });
+  const result = claimLevelReward(account, 5);
+
+  assert.equal(result.ok, true);
+  assert.equal(result.account.coins, 10 + reward.coins);
+  assert.equal(result.account.diamonds, reward.diamonds || 0);
+  assert.deepEqual(result.account.claimedLevelRewards, [5]);
+  assert.equal(claimLevelReward(result.account, 5).ok, false);
+});
+
+test("level rewards can give visible inventory items", () => {
+  const account = createAccount("abc", { level: 10, coins: 0, inventory: [] });
+  const result = claimLevelReward(account, 10);
+
+  assert.equal(result.ok, true);
+  assert.equal(result.account.inventory.includes("cat-pet"), true);
 });
