@@ -437,6 +437,7 @@ function enterWorld(socket, account, persistent, options = {}) {
       vz: 0,
       yaw: 0,
       onGround: false,
+      flying: false,
       carrying: null,
       carriedBy: null,
       attackUntil: 0,
@@ -564,7 +565,11 @@ function updatePlayer(session, dt) {
     return;
   }
 
-  const speed = canFly(session.account) ? 8 : 6;
+  const hasWings = canFly(session.account);
+  if (!hasWings) player.flying = false;
+  if (hasWings && session.input.y > 0.05) player.flying = true;
+
+  const speed = hasWings && player.flying ? 8 : 6;
   player.vx = session.input.x * speed;
   player.vz = session.input.z * speed;
   if (Math.abs(player.vx) + Math.abs(player.vz) > 0.1) {
@@ -572,7 +577,7 @@ function updatePlayer(session, dt) {
   }
 
   const swimming = player.location === "island" && isInRiver(player);
-  if (canFly(session.account)) {
+  if (hasWings && player.flying) {
     player.vy = session.input.y * 5;
   } else if (swimming) {
     player.vy -= 7 * dt;
@@ -601,6 +606,9 @@ function updatePlayer(session, dt) {
     player.y = floorY;
     player.vy = 0;
     player.onGround = true;
+    if (hasWings && session.input.y <= 0) {
+      player.flying = false;
+    }
   }
 
   const limit = 120;
@@ -625,6 +633,17 @@ function updateSurvivalWorld(dt) {
       const distance = Math.max(0.001, Math.hypot(dx, dz));
       hazard.x += (dx / distance) * hazard.moveSpeed * dt;
       hazard.z += (dz / distance) * hazard.moveSpeed * dt;
+    } else {
+      if (Date.now() > Number(hazard.wanderAfter || 0)) {
+        hazard.wanderAngle += (Math.random() - 0.5) * 1.4;
+        hazard.wanderAfter = Date.now() + 900 + Math.random() * 1200;
+      }
+      hazard.x += Math.cos(hazard.wanderAngle) * hazard.moveSpeed * 0.38 * dt;
+      hazard.z += Math.sin(hazard.wanderAngle) * hazard.moveSpeed * 0.38 * dt;
+      const distanceFromCenter = Math.hypot(hazard.x, hazard.z);
+      if (distanceFromCenter > 104) {
+        hazard.wanderAngle = Math.atan2(-hazard.z, -hazard.x);
+      }
     }
     hazard.y = islandHeight(hazard.x, hazard.z) + 0.8 + Math.abs(Math.sin(hazard.phase)) * 1.7;
   }
@@ -1852,7 +1871,7 @@ function dropMonsterFood(monster) {
 
 function makeSurvivalHazards() {
   return Array.from({ length: 18 }, (_, index) => {
-    const position = randomIslandEdgePoint();
+    const position = randomIslandCenterPoint();
     return {
       id: `hazard-${index + 1}`,
       x: position.x,
@@ -1861,6 +1880,8 @@ function makeSurvivalHazards() {
       phase: Math.random() * Math.PI * 2,
       speed: 1.5 + Math.random() * 0.8,
       moveSpeed: 4.8 + Math.random() * 2.2,
+      wanderAngle: Math.random() * Math.PI * 2,
+      wanderAfter: 0,
       hp: 3,
       hitUntil: 0,
       dead: false
@@ -1869,17 +1890,25 @@ function makeSurvivalHazards() {
 }
 
 function respawnMonster(monster) {
-  const position = randomIslandEdgePoint();
+  const position = randomIslandCenterPoint();
   Object.assign(monster, {
     x: position.x,
     y: islandHeight(position.x, position.z) + 1,
     z: position.z,
     phase: Math.random() * Math.PI * 2,
     moveSpeed: 4.8 + Math.random() * 2.2,
+    wanderAngle: Math.random() * Math.PI * 2,
+    wanderAfter: 0,
     hp: 3,
     hitUntil: 0,
     dead: false
   });
+}
+
+function randomIslandCenterPoint() {
+  const angle = Math.random() * Math.PI * 2;
+  const radius = Math.random() * 16;
+  return { x: Math.cos(angle) * radius, z: Math.sin(angle) * radius };
 }
 
 function randomIslandEdgePoint() {

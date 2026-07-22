@@ -544,8 +544,6 @@ function createPlayground() {
   addSlide(-24, 0, -20);
   addSwing(12, 0, -28);
   addFerrisWheel(-38, 0, -52);
-  addFacility(28, 0, -12, 0xbfe8ff, "shop");
-  addFacility(8, 0, 22, 0xffc5dc, "box");
   addIslandFacilities();
   addChallengeCourse();
   for (let i = 0; i < 18; i += 1) {
@@ -610,6 +608,10 @@ function addIslandFacilities() {
     const group = createFacilityMesh(facility);
     group.position.set(facility.x, 0.12, facility.z);
     group.rotation.y = Math.atan2(-facility.x, -facility.z);
+    group.userData.baseY = group.position.y;
+    group.userData.baseRotationY = group.rotation.y;
+    group.userData.motionSeed = Number(facility.id.split("-").at(-1) || 1) * 0.47;
+    group.userData.motionKind = facility.kind;
     state.facilityMeshes.set(facility.id, group);
     scene.add(group);
   }
@@ -620,9 +622,6 @@ function createFacilityMesh(facility) {
   const main = new THREE.MeshStandardMaterial({ color: facility.color, roughness: 0.55 });
   const white = new THREE.MeshStandardMaterial({ color: 0xf8fbff, roughness: 0.5 });
   const accent = new THREE.MeshStandardMaterial({ color: 0xfff1a8, roughness: 0.45 });
-  const base = new THREE.Mesh(new THREE.CylinderGeometry(4.8, 5.5, 0.45, 24), new THREE.MeshStandardMaterial({ color: 0xf4e9ff, roughness: 0.74 }));
-  base.position.y = 0.25;
-  group.add(base);
 
   if (facility.kind === "cloud") {
     for (const [x, y, z, s] of [[-1.6, 1.4, 0, 1.2], [0, 1.8, 0, 1.6], [1.8, 1.3, 0, 1.1]]) {
@@ -703,9 +702,6 @@ function createFacilityMesh(facility) {
     group.add(spring);
   }
 
-  const sign = new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.85, 0.28), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.48 }));
-  sign.position.set(0, 0.95, 4.8);
-  group.add(sign);
   return group;
 }
 
@@ -1878,6 +1874,7 @@ function trailColor(trailId, index) {
 function animate() {
   requestAnimationFrame(animate);
   clock.getDelta();
+  updateFacilityAnimations(performance.now() * 0.001);
   const me = state.players.get(state.myId);
   if (me) {
     const distance = 15.8;
@@ -1896,6 +1893,25 @@ function animate() {
   renderer.render(scene, camera);
 }
 
+function updateFacilityAnimations(time) {
+  for (const group of state.facilityMeshes.values()) {
+    const seed = group.userData.motionSeed || 0;
+    const kind = group.userData.motionKind;
+    group.position.y = (group.userData.baseY || 0) + Math.sin(time * 1.4 + seed) * 0.22;
+    if (["star", "ufo", "bubble", "ball"].includes(kind)) {
+      group.rotation.y = (group.userData.baseRotationY || 0) + time * (kind === "ball" ? 1.2 : 0.45);
+    }
+    if (kind === "moon") {
+      group.rotation.z = Math.sin(time * 1.5 + seed) * 0.08;
+    }
+    if (kind === "bounce") {
+      group.scale.y = 1 + Math.abs(Math.sin(time * 2.3 + seed)) * 0.12;
+    } else {
+      group.scale.y = 1;
+    }
+  }
+}
+
 function resizeRenderer() {
   const width = Math.max(1, els.gameScreen.clientWidth || window.innerWidth);
   const height = Math.max(1, els.gameScreen.clientHeight || window.innerHeight);
@@ -1907,17 +1923,27 @@ function resizeRenderer() {
 function sendInput() {
   if (!state.account || state.socket?.readyState !== WebSocket.OPEN) return;
   const input = { x: 0, z: 0, y: state.flyY, jump: state.jump };
-  if (state.keys.has("ArrowLeft") || state.keys.has("KeyA")) input.x -= 1;
-  if (state.keys.has("ArrowRight") || state.keys.has("KeyD")) input.x += 1;
-  if (state.keys.has("ArrowUp") || state.keys.has("KeyW")) input.z -= 1;
-  if (state.keys.has("ArrowDown") || state.keys.has("KeyS")) input.z += 1;
-  input.x += state.joystick.x;
-  input.z += state.joystick.z;
-  const length = Math.hypot(input.x, input.z);
+  let localX = 0;
+  let localZ = 0;
+  if (state.keys.has("ArrowLeft") || state.keys.has("KeyA")) localX -= 1;
+  if (state.keys.has("ArrowRight") || state.keys.has("KeyD")) localX += 1;
+  if (state.keys.has("ArrowUp") || state.keys.has("KeyW")) localZ -= 1;
+  if (state.keys.has("ArrowDown") || state.keys.has("KeyS")) localZ += 1;
+  localX += state.joystick.x;
+  localZ += state.joystick.z;
+  const length = Math.hypot(localX, localZ);
   if (length > 1) {
-    input.x /= length;
-    input.z /= length;
+    localX /= length;
+    localZ /= length;
   }
+  const cameraAngle = -0.6 + state.cameraYaw;
+  const forwardX = -Math.sin(cameraAngle);
+  const forwardZ = -Math.cos(cameraAngle);
+  const rightX = Math.cos(cameraAngle);
+  const rightZ = -Math.sin(cameraAngle);
+  const forwardAmount = -localZ;
+  input.x = rightX * localX + forwardX * forwardAmount;
+  input.z = rightZ * localX + forwardZ * forwardAmount;
   state.socket.send(JSON.stringify({ type: "input", input }));
 }
 
@@ -1980,18 +2006,33 @@ function showCoinModal() {
 }
 
 function showShopModal() {
-  openModal("商城", `<div class="list">${state.shopItems.map((item) => `
-    <div class="list-item">
-      <div class="split">
-        <strong>${item.name}</strong>
-        <span>${priceText(item)} · ${item.type || "裝備"}</span>
-      </div>
-      <button data-buy="${item.id}">購買</button>
+  openModal("商城", `
+    <div class="list">
+      <input id="shopSearchInput" autocomplete="off" placeholder="搜尋想買的東西" />
+      <div id="shopItemsList" class="list"></div>
     </div>
-  `).join("")}</div>`);
-  document.querySelectorAll("[data-buy]").forEach((button) => {
-    button.addEventListener("click", () => send("buy", { itemId: button.dataset.buy }));
-  });
+  `);
+  const renderShopItems = () => {
+    const query = document.querySelector("#shopSearchInput").value.trim().toLowerCase();
+    const items = state.shopItems.filter((item) => {
+      const text = `${item.name} ${item.id} ${item.type || ""} ${item.slot || ""}`.toLowerCase();
+      return !query || text.includes(query);
+    });
+    document.querySelector("#shopItemsList").innerHTML = items.map((item) => `
+      <div class="list-item">
+        <div class="split">
+          <strong>${item.name}</strong>
+          <span>${priceText(item)} · ${item.type || "裝備"}</span>
+        </div>
+        <button data-buy="${item.id}">購買</button>
+      </div>
+    `).join("") || `<p class="muted-line">找不到這個商品。</p>`;
+    document.querySelectorAll("[data-buy]").forEach((button) => {
+      button.addEventListener("click", () => send("buy", { itemId: button.dataset.buy }));
+    });
+  };
+  document.querySelector("#shopSearchInput").addEventListener("input", renderShopItems);
+  renderShopItems();
 }
 
 function showLevelRewardsModal() {
