@@ -710,6 +710,8 @@ function createCatMesh(player) {
     new THREE.BoxGeometry(1.6, 1.2, 1.6),
     new THREE.MeshStandardMaterial({ color: palette.body, roughness: 0.58 })
   );
+  body.name = "catBody";
+  body.userData.baseColor = palette.body;
   body.position.y = 0.6;
   group.add(body);
 
@@ -743,10 +745,14 @@ function createCatMesh(player) {
 
   const earMaterial = new THREE.MeshStandardMaterial({ color: palette.body, roughness: 0.7 });
   const leftEar = new THREE.Mesh(new THREE.ConeGeometry(0.32, 0.55, 4), earMaterial);
+  leftEar.name = "catEar";
+  leftEar.userData.baseColor = palette.body;
   leftEar.position.set(-0.55, 1.45, 0.2);
   leftEar.rotation.y = Math.PI / 4;
   group.add(leftEar);
   const rightEar = leftEar.clone();
+  rightEar.name = "catEar";
+  rightEar.userData.baseColor = palette.body;
   rightEar.position.x = 0.55;
   group.add(rightEar);
 
@@ -1303,6 +1309,7 @@ function updateCatMesh(mesh, player) {
   updateClothesMesh(mesh.userData.clothesGroup, player.equipped?.clothes);
   updatePetMesh(mesh.userData.petGroup, player);
   updateTrail(mesh, player);
+  updateHitFlash(mesh, player);
   const displayName = player.displayName || player.accountCode;
   if (mesh.userData.lastName !== displayName) {
     const ctx = mesh.userData.label.getContext("2d");
@@ -1316,6 +1323,17 @@ function updateCatMesh(mesh, player) {
     mesh.userData.texture.needsUpdate = true;
     mesh.userData.lastName = displayName;
   }
+}
+
+function updateHitFlash(mesh, player) {
+  const isHit = Number(player.hitUntil || 0) > Date.now();
+  mesh.traverse((part) => {
+    if (!part.isMesh || !part.material?.color || part.userData.baseColor === undefined) return;
+    part.material.color.setHex(isHit ? 0xff4f5f : part.userData.baseColor);
+    if (part.material.emissive) {
+      part.material.emissive.setHex(isHit ? 0x5a0008 : 0x000000);
+    }
+  });
 }
 
 function updateTailMesh(tail, tailId) {

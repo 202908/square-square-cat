@@ -426,6 +426,7 @@ function enterWorld(socket, account, persistent, options = {}) {
       carrying: null,
       carriedBy: null,
       attackUntil: 0,
+      hitUntil: 0,
       location: "island",
       roomOwner: null,
       ride: null,
@@ -685,6 +686,15 @@ function handleAttack(session) {
   const target = findPlayerInFront(session, 4);
   if (!target) return;
   session.player.attackUntil = Date.now() + 450;
+  const dx = target.player.x - session.player.x;
+  const dz = target.player.z - session.player.z;
+  const distance = Math.max(0.001, Math.hypot(dx, dz));
+  detachFromStack(target.player);
+  target.player.hitUntil = Date.now() + 650;
+  target.player.x += (dx / distance) * 1.8;
+  target.player.z += (dz / distance) * 1.8;
+  target.player.vy = 7.5;
+  target.player.onGround = false;
   broadcast("notice", { message: `${displayNameFor(session.account)} 咬了 ${displayNameFor(target.account)} 一下。` });
 }
 
