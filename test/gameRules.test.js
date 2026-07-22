@@ -15,6 +15,7 @@ import {
   createAccount,
   equipItem,
   getChallengePlatforms,
+  updateSurvivalStats,
   richestDiamondAccountCode,
   isValidNewAccountCode,
   redeemCode,
@@ -242,4 +243,26 @@ test("richest diamond account uses diamonds and breaks ties by code", () => {
   const c = createAccount("ccc", { diamonds: 12 });
 
   assert.equal(richestDiamondAccountCode([a, b, c]), "bbb");
+});
+
+test("adult survival stats drain and child stats do not", () => {
+  const adult = createAccount("adult", { survivalMode: "adult", hunger: 80, thirst: 70 });
+  const child = createAccount("child", { survivalMode: "child", hunger: 80, thirst: 70 });
+
+  const adultResult = updateSurvivalStats(adult, 10);
+  const childResult = updateSurvivalStats(child, 10);
+
+  assert.equal(adultResult.account.hunger < 80, true);
+  assert.equal(adultResult.account.thirst < 70, true);
+  assert.equal(childResult.account.hunger, 80);
+  assert.equal(childResult.account.thirst, 70);
+});
+
+test("adult survival death resets hunger and thirst", () => {
+  const adult = createAccount("adult", { survivalMode: "adult", hunger: 1, thirst: 1 });
+  const result = updateSurvivalStats(adult, 100);
+
+  assert.equal(result.died, true);
+  assert.equal(result.account.hunger, 100);
+  assert.equal(result.account.thirst, 100);
 });

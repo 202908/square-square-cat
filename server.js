@@ -28,7 +28,8 @@ import {
   redeemCode,
   richestDiamondAccountCode,
   sendCoinGift,
-  sendDiamondGift
+  sendDiamondGift,
+  updateSurvivalStats
 } from "./src/gameRules.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -85,6 +86,8 @@ let accounts = {};
 let coinCodes = structuredClone(DEFAULT_COIN_CODES);
 let chatLog = [];
 let worldCoins = makeWorldCoins(80);
+let survivalPickups = makeSurvivalPickups();
+let survivalHazards = makeSurvivalHazards();
 let worldBushes = makeHiddenBushes();
 
 await loadData();
@@ -149,6 +152,9 @@ async function loadData() {
       account.house ??= null;
       account.roomItems ??= [];
       account.giftInbox ??= [];
+      account.survivalMode ??= account.isHost ? "host" : null;
+      account.hunger ??= 100;
+      account.thirst ??= 100;
       if (!Array.isArray(account.claimedLevelRewards)) {
         account.claimedLevelRewards = [];
         changedAccounts = true;
@@ -257,6 +263,9 @@ function handleMessage(socket, message) {
       break;
     case "claimLevelReward":
       updateAccount(socket, session, claimLevelReward(session.account, message.level));
+      break;
+    case "setSurvivalMode":
+      handleSetSurvivalMode(socket, session, message.mode);
       break;
     case "equip":
       updateAccount(socket, session, equipItem(session.account, message.itemId));
@@ -463,12 +472,16 @@ function sanitizeInput(input = {}, hasWings) {
 function tickWorld() {
   updateSwing(1 / TICK_RATE);
   updateFerris(1 / TICK_RATE);
+  updateSurvivalWorld(1 / TICK_RATE);
   for (const session of sessions.values()) {
     updatePlayer(session, 1 / TICK_RATE);
   }
   const richestCode = richestDiamondAccountCode([...sessions.values()].map((session) => session.account));
   broadcast("state", {
     coins: worldCoins,
+    survivalPickups,
+    survivalHazards,
+    totalAccounts: Object.keys(accounts).length,
     bushes: worldBushes,
     swing: SWING,
     ferris: {
@@ -486,11 +499,15 @@ function tickWorld() {
       displayName: displayNameFor(session.account),
       isHost: session.account.isHost,
       level: session.account.level,
+      survivalMode: session.account.survivalMode,
+      hunger: session.account.hunger,
+      thirst: session.account.thirst,
       catVariant: session.account.catVariant,
       equipped: session.account.equipped,
       roomItems: session.player.location === "room" ? session.account.roomItems : [],
       teamId: session.player.teamId,
       challengeLevel: session.player.challengeLevel,
+      teammates: teammateNamesFor(session),
       coins: session.account.coins,
       diamonds: session.account.diamonds
     }))
@@ -576,6 +593,33 @@ function updatePlayer(session, dt) {
   player.z = clamp(player.z, -limit, limit);
   player.y = clamp(player.y, floorY, 60);
   collectNearbyCoins(session);
+  collectNearbySurvivalPickups(session);
+  handleHazardHits(session);
+}
+
+function updateSurvivalWorld(dt) {
+  const now = Date.now();
+  for (const hazard of survivalHazards) {
+    hazard.phase += dt * hazard.speed;
+    hazard.y = islandHeight(hazard.x, hazard.z) + 0.8 + Math.abs(Math.sin(hazard.phase)) * 3.4;
+  }
+  for (const session of sessions.values()) {
+    if (session.player.location !== "island" || session.account.isHost) continue;
+    const result = updateSurvivalStats(session.account, dt);
+    session.account = result.account;
+    if (result.died && now > Number(session.player.survivalDeathNoticeAfter || 0)) {
+      const spawn = randomSpawn();
+      session.player.x = spawn.x;
+      session.player.y = 4;
+      session.player.z = spawn.z;
+      session.player.vy = 0;
+      session.player.hitUntil = now + 1200;
+      session.player.survivalDeathNoticeAfter = now + 1500;
+      persistSessionAccount(session);
+      sendAccount(session.socket, session.account);
+      send(session.socket, "notice", { message: "你的飢餓或水分變成 0，回到出生點重新開始。" });
+    }
+  }
 }
 
 function updateChallengePlayer(session, dt) {
@@ -1042,6 +1086,21 @@ function findPlayerInFront(session, range) {
 function handleRedeem(socket, session, code) {
   const result = redeemCode(session.account, coinCodes, code);
   updateAccount(socket, session, result);
+}
+
+function handleSetSurvivalMode(socket, session, mode) {
+  if (session.account.isHost) return;
+  const selected = mode === "adult" ? "adult" : mode === "child" ? "child" : null;
+  if (!selected) {
+    send(socket, "notice", { message: "請選擇大人模式或小孩模式。" });
+    return;
+  }
+  session.account.survivalMode = selected;
+  session.account.hunger = 100;
+  session.account.thirst = 100;
+  persistSessionAccount(session);
+  sendAccount(socket, session.account);
+  send(socket, "notice", { message: selected === "adult" ? "已設定為大人模式。" : "已設定為小孩模式。" });
 }
 
 function handleAddFriend(socket, session, friendCode) {
@@ -1565,6 +1624,59 @@ function collectNearbyCoins(session) {
   }
 }
 
+function collectNearbySurvivalPickups(session) {
+  if (session.account.survivalMode !== "adult" || session.player.location !== "island") return;
+  for (const pickup of survivalPickups) {
+    if (pickup.taken) continue;
+    const distance = Math.hypot(session.player.x - pickup.x, session.player.z - pickup.z);
+    if (distance > 2.2 || Math.abs(session.player.y - pickup.y) > 4) continue;
+    pickup.taken = true;
+    if (pickup.kind === "meat") {
+      session.account.hunger = Math.min(100, Number(session.account.hunger || 0) + 28);
+      send(session.socket, "notice", { message: "吃到肉塊，飢餓值回復。" });
+    } else {
+      session.account.thirst = Math.min(100, Number(session.account.thirst || 0) + 32);
+      send(session.socket, "notice", { message: "撿到水壺，水分回復。" });
+    }
+    persistSessionAccount(session);
+    sendAccount(session.socket, session.account);
+    setTimeout(() => respawnSurvivalPickup(pickup), 12000);
+  }
+}
+
+function handleHazardHits(session) {
+  const player = session.player;
+  if (player.location !== "island" || Date.now() < Number(player.hazardCooldownUntil || 0)) return;
+  for (const hazard of survivalHazards) {
+    const distance = Math.hypot(player.x - hazard.x, player.z - hazard.z);
+    if (distance > 2.4 || Math.abs(player.y - hazard.y) > 3.2) continue;
+    const dx = player.x - hazard.x;
+    const dz = player.z - hazard.z;
+    const length = Math.max(0.001, Math.hypot(dx, dz));
+    player.x += (dx / length) * 2.4;
+    player.z += (dz / length) * 2.4;
+    player.vy = 8;
+    player.onGround = false;
+    player.hitUntil = Date.now() + 700;
+    player.hazardCooldownUntil = Date.now() + 1200;
+    if (session.account.survivalMode === "adult") {
+      session.account.thirst = Math.max(0, Number(session.account.thirst || 0) - 9);
+      persistSessionAccount(session);
+      sendAccount(session.socket, session.account);
+      send(session.socket, "notice", { message: "被跳跳物撞到，水分少了一些。" });
+    }
+    return;
+  }
+}
+
+function teammateNamesFor(session) {
+  if (!session.player.teamId || !teams.has(session.player.teamId)) return [];
+  return [...teams.get(session.player.teamId)]
+    .filter((id) => id !== session.id)
+    .map((id) => sessions.get(id)?.account?.code)
+    .filter(Boolean);
+}
+
 function handleSearchBush(socket, session, bushId) {
   const bush = worldBushes.find((candidate) => candidate.id === bushId && !candidate.searched);
   if (!bush) {
@@ -1605,6 +1717,51 @@ function resetBush(bush) {
 
 function makeWorldCoins(count) {
   return Array.from({ length: count }, () => makeCoin());
+}
+
+function makeSurvivalPickups() {
+  return Array.from({ length: 34 }, (_, index) => makeSurvivalPickup(index));
+}
+
+function makeSurvivalPickup(index) {
+  const position = randomIslandPoint(96);
+  return {
+    id: `survival-${index + 1}`,
+    kind: index % 2 === 0 ? "meat" : "water",
+    x: position.x,
+    y: islandHeight(position.x, position.z) + 0.8,
+    z: position.z,
+    taken: false
+  };
+}
+
+function respawnSurvivalPickup(pickup) {
+  const fresh = makeSurvivalPickup(Number(String(pickup.id).split("-").at(-1) || 1) - 1);
+  Object.assign(pickup, fresh);
+}
+
+function makeSurvivalHazards() {
+  return Array.from({ length: 14 }, (_, index) => {
+    const position = randomIslandPoint(88);
+    return {
+      id: `hazard-${index + 1}`,
+      x: position.x,
+      y: islandHeight(position.x, position.z) + 1,
+      z: position.z,
+      phase: Math.random() * Math.PI * 2,
+      speed: 1.5 + Math.random() * 0.8
+    };
+  });
+}
+
+function randomIslandPoint(limit = 96) {
+  let x = 0;
+  let z = 0;
+  do {
+    x = Math.random() * limit * 2 - limit;
+    z = Math.random() * limit * 2 - limit;
+  } while (Math.hypot(x, z) > limit);
+  return { x, z };
 }
 
 function makeHiddenBushes() {

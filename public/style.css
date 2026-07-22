@@ -217,6 +217,32 @@ h2 {
   color: var(--warning);
 }
 
+.survival-hud {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.survival-ring {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(circle at center, rgba(16, 19, 24, 0.9) 55%, transparent 57%),
+    conic-gradient(#ff9b6b var(--hunger, 100%), rgba(255, 255, 255, 0.16) 0);
+  border: 1px solid var(--line);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.survival-ring.water {
+  background:
+    radial-gradient(circle at center, rgba(16, 19, 24, 0.9) 55%, transparent 57%),
+    conic-gradient(#62b7ff var(--thirst, 100%), rgba(255, 255, 255, 0.16) 0);
+}
+
 .chat-panel {
   left: 12px;
   bottom: max(12px, env(safe-area-inset-bottom));

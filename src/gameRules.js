@@ -10,6 +10,7 @@ export const CAT_VARIANTS = ["black", "white", "calico", "orange"];
 export const MAX_PLAYER_LEVEL = 100;
 export const MAX_CHALLENGE_STEP_Y = 2.8;
 export const CHALLENGE_BASE = { x: -760, y: 1.2, z: -720 };
+export const SURVIVAL_DRAIN_PER_SECOND = { hunger: 0.18, thirst: 0.24 };
 
 export const EXTRA_NON_FURNITURE_ITEMS = [
   ["sun-hat", "太陽帽", "hat", "wearable", 140],
@@ -294,6 +295,9 @@ export function createAccount(code, overrides = {}) {
     redeemedCodes: [],
     claimedLevelRewards: [],
     friends: [],
+    survivalMode: isHost ? "host" : null,
+    hunger: 100,
+    thirst: 100,
     createdAt: new Date().toISOString(),
     ...overrides
   };
@@ -569,6 +573,29 @@ export function richestDiamondAccountCode(accounts = []) {
     }))
     .sort((a, b) => b.diamonds - a.diamonds || String(a.code).localeCompare(String(b.code)));
   return ranked[0]?.code || null;
+}
+
+export function updateSurvivalStats(account, seconds = 0) {
+  const nextAccount = structuredClone(account);
+  nextAccount.hunger = clampPercent(nextAccount.hunger ?? 100);
+  nextAccount.thirst = clampPercent(nextAccount.thirst ?? 100);
+  if (nextAccount.survivalMode !== "adult" || nextAccount.isHost) {
+    return { account: nextAccount, died: false };
+  }
+  nextAccount.hunger = clampPercent(nextAccount.hunger - seconds * SURVIVAL_DRAIN_PER_SECOND.hunger);
+  nextAccount.thirst = clampPercent(nextAccount.thirst - seconds * SURVIVAL_DRAIN_PER_SECOND.thirst);
+  const died = nextAccount.hunger <= 0 || nextAccount.thirst <= 0;
+  if (died) {
+    nextAccount.hunger = 100;
+    nextAccount.thirst = 100;
+  }
+  return { account: nextAccount, died };
+}
+
+export function clampPercent(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return 100;
+  return Math.max(0, Math.min(100, number));
 }
 
 export function claimLevelReward(account, level) {

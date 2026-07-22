@@ -13,7 +13,10 @@ const state = {
   bushMeshes: new Map(),
   houseMeshes: new Map(),
   furnitureMeshes: new Map(),
+  survivalPickupMeshes: new Map(),
+  hazardMeshes: new Map(),
   ferris: null,
+  totalAccounts: 0,
   keys: new Set(),
   joystick: { active: false, x: 0, z: 0 },
   actionCooldowns: {},
@@ -43,6 +46,10 @@ const els = {
   levelRewardsButton: document.querySelector("#levelRewardsButton"),
   coinAmount: document.querySelector("#coinAmount"),
   diamondAmount: document.querySelector("#diamondAmount"),
+  teamStatus: document.querySelector("#teamStatus"),
+  survivalHud: document.querySelector("#survivalHud"),
+  hungerText: document.querySelector("#hungerText"),
+  thirstText: document.querySelector("#thirstText"),
   coinCodeButton: document.querySelector("#coinCodeButton"),
   friendsButton: document.querySelector("#friendsButton"),
   challengeButton: document.querySelector("#challengeButton"),
@@ -264,7 +271,7 @@ function handleServerMessage(message) {
   if (message.type === "authError") showAuthError(message);
   if (message.type === "authed") handleAuthed(message);
   if (message.type === "account") updateAccount(message);
-  if (message.type === "state") updateWorldState(message.players, message.coins || [], message.houses || [], message.swing, message.bushes || [], message.ferris);
+  if (message.type === "state") updateWorldState(message);
   if (message.type === "chat") renderChat(message.chatLog);
   if (message.type === "notice") showNotice(message.message);
   if (message.type === "flightInvite") showFlightInvite(message);
@@ -347,6 +354,9 @@ function updateAccount(message) {
   }
   if (!els.modal.classList.contains("hidden") && els.modalTitle.textContent === "等級獎勵") {
     showLevelRewardsModal();
+  }
+  if (!state.account.isHost && !state.account.survivalMode) {
+    showSurvivalModeModal();
   }
 }
 
@@ -617,8 +627,15 @@ function createRoom() {
   scene.add(roomGroup);
 }
 
-function updateWorldState(players, coins, houses = [], swing, bushes = [], ferris = null) {
+function updateWorldState(message) {
+  const players = message.players || [];
+  const coins = message.coins || [];
+  const houses = message.houses || [];
+  const swing = message.swing;
+  const bushes = message.bushes || [];
+  const ferris = message.ferris;
   state.ferris = ferris || state.ferris;
+  state.totalAccounts = Number(message.totalAccounts || state.totalAccounts || 0);
   const ids = new Set(players.map((player) => player.id));
   for (const [id, mesh] of state.meshes) {
     if (!ids.has(id)) {
@@ -638,6 +655,8 @@ function updateWorldState(players, coins, houses = [], swing, bushes = [], ferri
     updateCatMesh(state.meshes.get(player.id), player);
   });
   updateCoinMeshes(coins);
+  updateSurvivalPickupMeshes(message.survivalPickups || []);
+  updateHazardMeshes(message.survivalHazards || []);
   updateBushMeshes(bushes);
   updateHouseMeshes(houses);
   updateSwingMesh(swing);
@@ -649,8 +668,28 @@ function updateWorldState(players, coins, houses = [], swing, bushes = [], ferri
   }
   els.enterHouseButton.textContent = me?.location === "room" ? "離開" : "進入";
   els.swingButton.textContent = me?.ride === "swing" ? "下鞦韆" : "上鞦韆";
+  updateTeamStatus(me);
+  updateSurvivalHud(me);
   updateActionButtons(me, houses, bushes);
   updateRoomFurniture(me?.roomItems || []);
+}
+
+function updateTeamStatus(me) {
+  const names = me?.teammates || [];
+  els.teamStatus.textContent = names.length ? `組隊：${names.join("、")}` : "未組隊";
+  els.teamStatus.classList.toggle("hidden", !names.length);
+}
+
+function updateSurvivalHud(me) {
+  const show = me?.survivalMode === "adult";
+  els.survivalHud.classList.toggle("hidden", !show);
+  if (!show) return;
+  const hunger = Math.round(Number(me.hunger ?? 100));
+  const thirst = Math.round(Number(me.thirst ?? 100));
+  els.hungerText.textContent = `飽 ${hunger}%`;
+  els.thirstText.textContent = `水 ${thirst}%`;
+  els.survivalHud.style.setProperty("--hunger", `${hunger}%`);
+  els.survivalHud.style.setProperty("--thirst", `${thirst}%`);
 }
 
 function updateActionButtons(me, houses, bushes = []) {
@@ -860,6 +899,61 @@ function updateCoinMeshes(coins) {
     const mesh = state.coinMeshes.get(coin.id);
     mesh.position.set(coin.x, coin.y + Math.sin(Date.now() * 0.006 + coin.x) * 0.16, coin.z);
     mesh.rotation.z += 0.08;
+  }
+}
+
+function updateSurvivalPickupMeshes(pickups) {
+  const active = pickups.filter((pickup) => !pickup.taken);
+  const ids = new Set(active.map((pickup) => pickup.id));
+  for (const [id, mesh] of state.survivalPickupMeshes) {
+    if (!ids.has(id)) {
+      scene.remove(mesh);
+      state.survivalPickupMeshes.delete(id);
+    }
+  }
+  for (const pickup of active) {
+    if (!state.survivalPickupMeshes.has(pickup.id)) {
+      const mesh = createSurvivalPickupMesh(pickup.kind);
+      state.survivalPickupMeshes.set(pickup.id, mesh);
+      scene.add(mesh);
+    }
+    const mesh = state.survivalPickupMeshes.get(pickup.id);
+    mesh.position.set(pickup.x, pickup.y, pickup.z);
+    mesh.rotation.y += 0.03;
+  }
+}
+
+function createSurvivalPickupMesh(kind) {
+  if (kind === "water") {
+    const group = new THREE.Group();
+    const bottle = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.36, 1, 12), new THREE.MeshStandardMaterial({ color: 0x62b7ff, roughness: 0.35, transparent: true, opacity: 0.85 }));
+    bottle.position.y = 0.5;
+    group.add(bottle);
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.22, 10), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.45 }));
+    cap.position.y = 1.12;
+    group.add(cap);
+    return group;
+  }
+  return new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.45, 0.65), new THREE.MeshStandardMaterial({ color: 0xff6b6b, roughness: 0.55 }));
+}
+
+function updateHazardMeshes(hazards) {
+  const ids = new Set(hazards.map((hazard) => hazard.id));
+  for (const [id, mesh] of state.hazardMeshes) {
+    if (!ids.has(id)) {
+      scene.remove(mesh);
+      state.hazardMeshes.delete(id);
+    }
+  }
+  for (const hazard of hazards) {
+    if (!state.hazardMeshes.has(hazard.id)) {
+      const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.9, 18, 12), new THREE.MeshStandardMaterial({ color: 0xfff1a8, roughness: 0.45 }));
+      state.hazardMeshes.set(hazard.id, mesh);
+      scene.add(mesh);
+    }
+    const mesh = state.hazardMeshes.get(hazard.id);
+    mesh.position.set(hazard.x, hazard.y, hazard.z);
+    mesh.scale.set(1.15, 0.82 + Math.abs(Math.sin(Date.now() * 0.006)) * 0.35, 1.15);
   }
 }
 
@@ -1301,7 +1395,8 @@ function updateChallengeStage(level = 1) {
 function updateCatMesh(mesh, player) {
   mesh.position.set(player.x, player.y, player.z);
   mesh.rotation.y = player.yaw;
-  mesh.scale.setScalar(player.id === state.myId ? 1.12 : 1);
+  const baseScale = player.survivalMode === "adult" ? 2 : 1;
+  mesh.scale.setScalar(baseScale * (player.id === state.myId ? 1.12 : 1));
   if (mesh.userData.tail) {
     updateTailMesh(mesh.userData.tail, player.equipped?.tail);
   }
@@ -1663,6 +1758,29 @@ function showLevelRewardsModal() {
   });
 }
 
+function showSurvivalModeModal() {
+  openModal("選擇模式", `
+    <div class="list">
+      <div class="list-item">
+        <strong>小孩模式</strong>
+        <p class="muted-line">不會有飢餓和水分，比較輕鬆，被撞到只會彈一下。</p>
+        <button class="primary-button" data-survival-mode="child">選小孩模式</button>
+      </div>
+      <div class="list-item">
+        <strong>大人模式</strong>
+        <p class="muted-line">角色變大，會有飢餓和水分，需要找肉塊和水壺。</p>
+        <button data-survival-mode="adult">選大人模式</button>
+      </div>
+    </div>
+  `);
+  document.querySelectorAll("[data-survival-mode]").forEach((button) => {
+    button.addEventListener("click", () => {
+      send("setSurvivalMode", { mode: button.dataset.survivalMode });
+      closeModal();
+    });
+  });
+}
+
 function showFerrisIconModal() {
   openModal("摩天輪中心圖案", `<div class="list">${FERRIS_ICON_OPTIONS.map(([id, label]) => `
     <div class="list-item">
@@ -1862,6 +1980,12 @@ function showOnlinePlayersModal() {
     <div class="list">
       <div class="list-item">
         <div class="split">
+          <strong>加入過遊戲</strong>
+          <span>${state.totalAccounts || players.length} 個帳號</span>
+        </div>
+      </div>
+      <div class="list-item">
+        <div class="split">
           <strong>目前在線</strong>
           <span>${players.length} 隻貓</span>
         </div>
@@ -1872,7 +1996,7 @@ function showOnlinePlayersModal() {
             <strong>${escapeHtml(player.displayName || player.accountCode)}</strong>
             <span>${player.isHost ? "主機" : `Lv. ${player.level || 1}`}</span>
           </div>
-          <small>${locationLabel(player.location)} · 金幣 ${player.isHost ? "∞" : Number(player.coins || 0)}</small>
+          <small>${locationLabel(player.location)} · 金幣 ${player.isHost ? "∞" : Number(player.coins || 0)} · 鑽石 ${player.isHost ? "∞" : Number(player.diamonds || 0)}</small>
         </div>
       `).join("") || "<p>目前沒有玩家在線。</p>"}
     </div>
