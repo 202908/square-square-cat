@@ -368,6 +368,9 @@ function handleMessage(socket, message) {
     case "adminToggleCode":
       handleAdminToggleCode(socket, session, message.code);
       break;
+    case "adminDeleteCode":
+      handleAdminDeleteCode(socket, session, message.code);
+      break;
     default:
       send(socket, "notice", { message: "未知指令。" });
   }
@@ -804,6 +807,7 @@ function hitMonster(session, monster) {
   monster.phase += 1.2;
   if (result.dead) {
     monster.dead = true;
+    dropMonsterFood(monster);
     send(session.socket, "notice", { message: "怪物被打倒了。" });
     setTimeout(() => respawnMonster(monster), 7000);
   } else {
@@ -1613,6 +1617,16 @@ function handleAdminToggleCode(socket, session, rawCode) {
   send(socket, "account", { account: session.account, shopItems: SHOP_ITEMS, coinCodes });
 }
 
+function handleAdminDeleteCode(socket, session, rawCode) {
+  if (!session.account.isHost) return;
+  const code = String(rawCode || "").trim();
+  if (!coinCodes[code]) return;
+  delete coinCodes[code];
+  saveCodes();
+  send(socket, "account", { account: session.account, shopItems: SHOP_ITEMS, coinCodes });
+  send(socket, "notice", { message: "代碼已刪除。" });
+}
+
 function addChat(sender, rawText) {
   const text = String(rawText || "").trim().slice(0, 120);
   if (!text) return;
@@ -1704,7 +1718,6 @@ function collectNearbySurvivalPickups(session) {
     send(session.socket, "notice", { message: "吃到肉塊，飢餓值回復。" });
     persistSessionAccount(session);
     sendAccount(session.socket, session.account);
-    setTimeout(() => respawnSurvivalPickup(pickup), 12000);
   }
 }
 
@@ -1799,11 +1812,10 @@ function makeWorldCoins(count) {
 }
 
 function makeSurvivalPickups() {
-  return Array.from({ length: 24 }, (_, index) => makeSurvivalPickup(index));
+  return [];
 }
 
-function makeSurvivalPickup(index) {
-  const position = randomIslandPoint(96);
+function makeSurvivalPickup(index, position = randomIslandPoint(96)) {
   return {
     id: `survival-${index + 1}`,
     kind: "meat",
@@ -1814,9 +1826,12 @@ function makeSurvivalPickup(index) {
   };
 }
 
-function respawnSurvivalPickup(pickup) {
-  const fresh = makeSurvivalPickup(Number(String(pickup.id).split("-").at(-1) || 1) - 1);
-  Object.assign(pickup, fresh);
+function dropMonsterFood(monster) {
+  survivalPickups.push(makeSurvivalPickup(Date.now(), {
+    x: monster.x,
+    z: monster.z
+  }));
+  survivalPickups = survivalPickups.filter((pickup) => !pickup.taken).slice(-30);
 }
 
 function makeSurvivalHazards() {

@@ -355,8 +355,13 @@ function updateAccount(message) {
   if (!els.modal.classList.contains("hidden") && els.modalTitle.textContent === "等級獎勵") {
     showLevelRewardsModal();
   }
+  if (!els.modal.classList.contains("hidden") && els.modalTitle.textContent === "新增 Password") {
+    showAdminModal();
+  }
   if (!state.account.isHost && !state.account.survivalMode) {
     showSurvivalModeModal();
+  } else if (shouldShowAdultIntro()) {
+    showAdultIntroModal();
   }
 }
 
@@ -1788,7 +1793,7 @@ function showSurvivalModeModal() {
       </div>
       <div class="list-item">
         <strong>大人模式</strong>
-        <p class="muted-line">角色變大，會有飢餓和水分，需要找肉塊和水壺。</p>
+        <p class="muted-line">角色變大，會有飢餓和水分；要喝溪流補水、打倒怪物拿食物。</p>
         <button data-survival-mode="adult">選大人模式</button>
       </div>
     </div>
@@ -1798,6 +1803,39 @@ function showSurvivalModeModal() {
       send("setSurvivalMode", { mode: button.dataset.survivalMode });
       closeModal();
     });
+  });
+}
+
+function shouldShowAdultIntro() {
+  if (state.account?.isHost || state.account?.survivalMode !== "adult") return false;
+  return localStorage.getItem(adultIntroKey()) !== "seen";
+}
+
+function adultIntroKey() {
+  return `square-cat-adult-intro:${state.account?.code || "guest"}`;
+}
+
+function showAdultIntroModal() {
+  openModal("大人模式說明", `
+    <div class="list">
+      <div class="list-item">
+        <strong>照顧飢餓和水分</strong>
+        <p class="muted-line">左上角會顯示飽腹值和水分。任何一個變成 0，就會回到安全狀態重新開始。</p>
+      </div>
+      <div class="list-item">
+        <strong>喝溪流補水</strong>
+        <p class="muted-line">走到島上的藍色溪流旁邊，水分會慢慢回復。</p>
+      </div>
+      <div class="list-item">
+        <strong>打怪物拿食物</strong>
+        <p class="muted-line">地上不會直接長食物了。把彈跳怪物打倒，才會掉出肉塊。</p>
+      </div>
+      <button id="adultIntroOk" class="primary-button">知道了，開始玩</button>
+    </div>
+  `);
+  document.querySelector("#adultIntroOk").addEventListener("click", () => {
+    localStorage.setItem(adultIntroKey(), "seen");
+    closeModal();
   });
 }
 
@@ -2035,12 +2073,15 @@ function showAdminModal() {
   const codeRows = Object.entries(state.coinCodes).map(([code, entry]) => `
     <div class="list-item">
       <div class="split">
-        <strong>${maskCode(code)}</strong>
+        <strong>${escapeHtml(code)}</strong>
         <span>${entry.type === "item" ? entry.item : `${entry.coins} 金幣`} · ${entry.active === false ? "下架" : "上架"}</span>
       </div>
-      <button data-toggle-code="${escapeHtml(code)}">${entry.active === false ? "重新上架" : "下架"}</button>
+      <div class="row">
+        <button data-toggle-code="${escapeHtml(code)}">${entry.active === false ? "重新上架" : "下架"}</button>
+        <button data-delete-code="${escapeHtml(code)}">刪除</button>
+      </div>
     </div>
-  `).join("");
+  `).join("") || `<p class="muted-line">目前還沒有新增過 Password。</p>`;
   openModal("新增 Password", `
     <form id="adminCodeForm" class="list">
       <input id="adminCodeInput" placeholder="新代碼" />
@@ -2068,12 +2109,13 @@ function showAdminModal() {
   document.querySelectorAll("[data-toggle-code]").forEach((button) => {
     button.addEventListener("click", () => send("adminToggleCode", { code: button.dataset.toggleCode }));
   });
-}
-
-function maskCode(code) {
-  const text = String(code || "");
-  if (text.length <= 2) return "已設定代碼";
-  return `${escapeHtml(text.slice(0, 1))}${"•".repeat(Math.min(6, text.length - 2))}${escapeHtml(text.slice(-1))}`;
+  document.querySelectorAll("[data-delete-code]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (confirm("確定要刪除這個 Password 嗎？")) {
+        send("adminDeleteCode", { code: button.dataset.deleteCode });
+      }
+    });
+  });
 }
 
 function openModal(title, body) {
