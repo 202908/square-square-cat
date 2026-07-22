@@ -278,7 +278,7 @@ function handleMessage(socket, message) {
 
   if (message.type === "createAccount") return createNewAccount(socket, message.code, Boolean(message.prefers2D));
   if (message.type === "login") return loginAccount(socket, message.code, message.hostPassword);
-  if (message.type === "guest") return enterWorld(socket, makeGuestAccount(), false);
+  if (message.type === "guest") return enterWorld(socket, makeGuestAccount({ prefers2D: Boolean(message.prefers2D) }), false);
 
   if (!session) {
     send(socket, "notice", { message: "請先登入。" });

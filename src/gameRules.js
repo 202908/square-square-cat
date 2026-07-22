@@ -349,11 +349,12 @@ export function pickRandomCatVariant() {
   return CAT_VARIANTS[Math.floor(Math.random() * CAT_VARIANTS.length)];
 }
 
-export function makeGuestAccount() {
+export function makeGuestAccount(overrides = {}) {
   const suffix = Math.random().toString(36).slice(2, 8);
   return createAccount(`guest-${suffix}`, {
     isGuest: true,
-    code: `guest-${suffix}`
+    code: `guest-${suffix}`,
+    ...overrides
   });
 }
 

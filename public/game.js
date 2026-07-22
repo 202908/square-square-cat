@@ -37,6 +37,7 @@ const els = {
   gameScreen: document.querySelector("#gameScreen"),
   startButton: document.querySelector("#startButton"),
   guestButton: document.querySelector("#guestButton"),
+  guestPrefer2D: document.querySelector("#guestPrefer2D"),
   authForm: document.querySelector("#authForm"),
   authChoices: document.querySelector("#authChoices"),
   authLabel: document.querySelector("#authLabel"),
@@ -166,7 +167,7 @@ function bindUi() {
   document.querySelectorAll("[data-auth-mode]").forEach((button) => {
     button.addEventListener("click", () => openAuthForm(button.dataset.authMode));
   });
-  els.guestButton.addEventListener("click", () => send("guest"));
+  els.guestButton.addEventListener("click", () => send("guest", { prefers2D: els.guestPrefer2D.checked }));
   els.cancelAuth.addEventListener("click", () => {
     els.authForm.classList.add("hidden");
     els.authChoices.classList.remove("hidden");

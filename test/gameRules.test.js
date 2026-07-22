@@ -22,6 +22,7 @@ import {
   damageMonster,
   richestDiamondAccountCode,
   isValidNewAccountCode,
+  makeGuestAccount,
   redeemCode,
   sendCoinGift,
   sendDiamondGift
@@ -62,6 +63,12 @@ test("player account gets one allowed cat skin at creation", () => {
 
 test("player account can remember a 2D display preference", () => {
   const account = createAccount("flatcat", { prefers2D: true });
+  assert.equal(account.prefers2D, true);
+});
+
+test("guest account can use a 2D display preference", () => {
+  const account = makeGuestAccount({ prefers2D: true });
+  assert.equal(account.isGuest, true);
   assert.equal(account.prefers2D, true);
 });
 
