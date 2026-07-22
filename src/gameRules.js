@@ -13,7 +13,13 @@ export const CHALLENGE_BASE = { x: -760, y: 1.2, z: -720 };
 export const SURVIVAL_DRAIN_PER_SECOND = { hunger: 0.18, thirst: 0.24 };
 export const DEFAULT_TITLE_ID = "rookie-cat";
 export const DEFAULT_TITLES = {
-  [DEFAULT_TITLE_ID]: { id: DEFAULT_TITLE_ID, name: "新手貓貓", color: "black" }
+  [DEFAULT_TITLE_ID]: { id: DEFAULT_TITLE_ID, name: "新手貓貓", color: "black" },
+  "super-cat": { id: "super-cat", name: "超級貓貓", colors: ["red", "deepBlue", "red", "deepBlue"] },
+  "park-lover-kitten": { id: "park-lover-kitten", name: "喜愛樂園的小貓", colors: ["pink", "lightBlue"] },
+  "monster-king": { id: "monster-king", name: "怪物消滅之王", color: "yellow" },
+  "lucky-coin-king": { id: "lucky-coin-king", name: "幸運金幣之王", color: "yellow" },
+  "chat-king": { id: "chat-king", name: "團聚貓貓王", colors: ["red", "yellow"] },
+  "host-cat": { id: "host-cat", name: "主機貓", colors: ["pink", "white", "lightBlue"] }
 };
 export const TITLE_COLORS = {
   black: "#111111",
@@ -313,9 +319,17 @@ export function createAccount(code, overrides = {}) {
       tail: null,
       trail: null,
       pet: null,
-      title: DEFAULT_TITLE_ID
+      title: isHost ? "host-cat" : DEFAULT_TITLE_ID
     },
-    titles: [DEFAULT_TITLE_ID],
+    titles: isHost ? [DEFAULT_TITLE_ID, "host-cat"] : [DEFAULT_TITLE_ID],
+    achievements: {
+      ferrisRides: 0,
+      swingRides: 0,
+      slideRides: 0,
+      monstersDefeated: 0,
+      coinPacksOpened: 0,
+      chatMessages: 0
+    },
     house: null,
     roomItems: [],
     giftInbox: [],

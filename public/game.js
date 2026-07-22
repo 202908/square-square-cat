@@ -9,6 +9,7 @@ const state = {
   coinCodes: {},
   titleCatalog: {},
   titleColors: {},
+  titlePlayers: [],
   players: new Map(),
   meshes: new Map(),
   coinMeshes: new Map(),
@@ -442,6 +443,7 @@ function updateAccount(message) {
   state.coinCodes = message.coinCodes || state.coinCodes;
   state.titleCatalog = message.titleCatalog || state.titleCatalog;
   state.titleColors = message.titleColors || state.titleColors;
+  state.titlePlayers = message.titlePlayers || state.titlePlayers;
   els.accountName.textContent = state.account.code;
   els.levelText.textContent = state.account.isHost ? "主機" : `Lv. ${state.account.level}`;
   els.coinAmount.textContent = state.account.isHost ? "金幣 ∞" : `金幣 ${state.account.coins}`;
@@ -1666,22 +1668,39 @@ function updateCatMesh(mesh, player) {
   updateHitFlash(mesh, player);
   const displayName = player.displayName || player.accountCode;
   const title = player.title || {};
-  const labelKey = `${title.id || ""}:${title.name || ""}:${title.color || ""}:${displayName}`;
+  const labelKey = `${title.id || ""}:${title.name || ""}:${title.color || ""}:${(title.colors || []).join(",")}:${displayName}`;
   if (mesh.userData.lastName !== labelKey) {
     const ctx = mesh.userData.label.getContext("2d");
     ctx.clearRect(0, 0, 256, 64);
     ctx.fillStyle = "rgba(5, 10, 14, 0.7)";
     ctx.fillRect(0, 4, 256, 56);
-    ctx.fillStyle = titleCanvasFill(title.color || "black", ctx, 256);
     ctx.font = "800 20px sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText(title.name || "新手貓貓", 128, 27);
+    drawTitleText(ctx, title.name || "新手貓貓", title, 128, 27);
     ctx.fillStyle = "#ffffff";
     ctx.font = "700 18px sans-serif";
     ctx.fillText(displayName, 128, 51);
     mesh.userData.texture.needsUpdate = true;
     mesh.userData.lastName = labelKey;
   }
+}
+
+function drawTitleText(ctx, text, title, x, y) {
+  const colors = title.colors || null;
+  if (!colors?.length) {
+    ctx.fillStyle = titleCanvasFill(title.color || "black", ctx, 256);
+    ctx.fillText(text, x, y);
+    return;
+  }
+  const chars = [...text];
+  const widths = chars.map((char) => ctx.measureText(char).width);
+  let cursor = x - widths.reduce((sum, width) => sum + width, 0) / 2;
+  chars.forEach((char, index) => {
+    const width = widths[index];
+    ctx.fillStyle = titleCanvasFill(colors[index % colors.length], ctx, 256);
+    ctx.fillText(char, cursor + width / 2, y);
+    cursor += width;
+  });
 }
 
 function titleCanvasFill(colorId, ctx, width) {
@@ -2396,6 +2415,19 @@ function locationLabel(location) {
 
 function showAdminModal() {
   const colorOptions = Object.entries(state.titleColors || {}).map(([id, value]) => `<option value="${id}">${titleColorName(id, value)}</option>`).join("");
+  const playerOptions = (state.titlePlayers || []).map((player) => `<option value="${escapeHtml(player.code)}">${escapeHtml(player.code)}</option>`).join("");
+  const titleRows = Object.values(state.titleCatalog || {}).map((title) => `
+    <div class="list-item">
+      <div class="split">
+        <strong style="color:${cssTitleColor(title.color || title.colors?.[0])}">${escapeHtml(title.name)}</strong>
+        <span>${titleColorLabel(title)}</span>
+      </div>
+      <div class="row">
+        <select data-title-player="${escapeHtml(title.id)}">${playerOptions}</select>
+        <button data-grant-title="${escapeHtml(title.id)}">發給玩家</button>
+      </div>
+    </div>
+  `).join("");
   const codeRows = Object.entries(state.coinCodes).map(([code, entry]) => `
     <div class="list-item">
       <div class="split">
@@ -2415,6 +2447,8 @@ function showAdminModal() {
       <select id="adminTitleColorInput">${colorOptions}</select>
       <button class="primary-button" type="submit">新增稱號</button>
     </form>
+    <h3>稱號庫</h3>
+    <div class="list">${titleRows}</div>
     <form id="adminCodeForm" class="list">
       <strong>新增金幣/道具 Password</strong>
       <input id="adminCodeInput" placeholder="新代碼" />
@@ -2456,6 +2490,18 @@ function showAdminModal() {
       }
     });
   });
+  document.querySelectorAll("[data-grant-title]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const titleId = button.dataset.grantTitle;
+      const select = button.closest(".list-item")?.querySelector("[data-title-player]");
+      send("adminGrantTitle", { titleId, accountCode: select?.value });
+    });
+  });
+}
+
+function titleColorLabel(title) {
+  if (title.colors?.length) return title.colors.map((color) => titleColorName(color, state.titleColors?.[color])).join(" / ");
+  return titleColorName(title.color, state.titleColors?.[title.color]);
 }
 
 function titleColorName(id, value) {

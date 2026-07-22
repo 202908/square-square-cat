@@ -59,6 +59,15 @@ test("player account gets one allowed cat skin at creation", () => {
   assert.deepEqual(DEFAULT_TITLES[DEFAULT_TITLE_ID], { id: DEFAULT_TITLE_ID, name: "新手貓貓", color: "black" });
 });
 
+test("built-in achievement titles have the requested names and colors", () => {
+  assert.deepEqual(DEFAULT_TITLES["super-cat"].colors, ["red", "deepBlue", "red", "deepBlue"]);
+  assert.deepEqual(DEFAULT_TITLES["park-lover-kitten"].colors, ["pink", "lightBlue"]);
+  assert.equal(DEFAULT_TITLES["monster-king"].color, "yellow");
+  assert.equal(DEFAULT_TITLES["lucky-coin-king"].color, "yellow");
+  assert.deepEqual(DEFAULT_TITLES["chat-king"].colors, ["red", "yellow"]);
+  assert.deepEqual(DEFAULT_TITLES["host-cat"].colors, ["pink", "white", "lightBlue"]);
+});
+
 test("shop has at least fifty furniture items", () => {
   assert.ok(SHOP_ITEMS.filter((item) => item.type === "furniture").length >= 50);
 });

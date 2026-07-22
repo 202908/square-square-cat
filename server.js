@@ -154,19 +154,38 @@ async function loadData() {
       account.equipped.trail ??= null;
       account.equipped.pet ??= null;
       if (!account.equipped.title) {
-        account.equipped.title = DEFAULT_TITLE_ID;
+        account.equipped.title = account.isHost ? "host-cat" : DEFAULT_TITLE_ID;
         changedAccounts = true;
       }
       if (!Array.isArray(account.titles)) {
-        account.titles = [DEFAULT_TITLE_ID];
+        account.titles = account.isHost ? [DEFAULT_TITLE_ID, "host-cat"] : [DEFAULT_TITLE_ID];
         changedAccounts = true;
       }
+      account.achievements ||= {};
+      account.achievements.ferrisRides ??= 0;
+      account.achievements.swingRides ??= 0;
+      account.achievements.slideRides ??= 0;
+      account.achievements.monstersDefeated ??= 0;
+      account.achievements.coinPacksOpened ??= 0;
+      account.achievements.chatMessages ??= 0;
       if (!account.titles.includes(DEFAULT_TITLE_ID)) {
         account.titles.unshift(DEFAULT_TITLE_ID);
         changedAccounts = true;
       }
+      if (account.isHost && !account.titles.includes("host-cat")) {
+        account.titles.push("host-cat");
+        changedAccounts = true;
+      }
+      if (account.isHost && account.equipped.title !== "host-cat") {
+        account.equipped.title = "host-cat";
+        changedAccounts = true;
+      }
       if (!account.titles.includes(account.equipped.title)) {
-        account.equipped.title = DEFAULT_TITLE_ID;
+        account.equipped.title = account.isHost ? "host-cat" : DEFAULT_TITLE_ID;
+        changedAccounts = true;
+      }
+      if (!account.isHost && Number(account.level || 1) >= 70 && !account.titles.includes("super-cat")) {
+        account.titles.push("super-cat");
         changedAccounts = true;
       }
       account.house ??= null;
@@ -274,7 +293,7 @@ function handleMessage(socket, message) {
       session.input = sanitizeInput(message.input, canFly(session.account));
       break;
     case "chat":
-      addChat(session.account.code, message.text);
+      addChat(session, message.text);
       break;
     case "stack":
       handleStack(session);
@@ -401,6 +420,9 @@ function handleMessage(socket, message) {
       break;
     case "adminUpsertTitle":
       handleAdminUpsertTitle(socket, session, message);
+      break;
+    case "adminGrantTitle":
+      handleAdminGrantTitle(socket, session, message.titleId, message.accountCode);
       break;
     default:
       send(socket, "notice", { message: "未知指令。" });
@@ -890,6 +912,7 @@ function hitMonster(session, monster) {
   if (result.dead) {
     monster.dead = true;
     dropMonsterFood(monster);
+    incrementAchievement(session, "monstersDefeated");
     send(session.socket, "notice", { message: "怪物被打倒了。" });
     setTimeout(() => respawnMonster(monster), 7000);
   } else {
@@ -908,6 +931,7 @@ function handleSlideDown(socket, session) {
   detachFromStack(player);
   player.ride = null;
   player.slideProgress = 0;
+  incrementAchievement(session, "slideRides");
   player.vx = 0;
   player.vy = 0;
   player.vz = 0;
@@ -946,6 +970,7 @@ function handleSwingMount(socket, session) {
   if (!SWING.riders.includes(session.id)) SWING.riders.push(session.id);
   session.player.ride = "swing";
   session.player.slideProgress = null;
+  incrementAchievement(session, "swingRides");
   updateSwingRider(session);
 }
 
@@ -1065,6 +1090,7 @@ function handleFerrisRide(socket, session) {
   session.player.ride = "ferris";
   session.player.ferrisSeat = bottomFerrisSeatIndex();
   updateFerrisRider(session);
+  incrementAchievement(session, "ferrisRides");
   send(socket, "notice", { message: "你坐上摩天輪了。" });
 }
 
@@ -1239,8 +1265,12 @@ function findPlayerInFront(session, range) {
 }
 
 function handleRedeem(socket, session, code) {
+  const entry = coinCodes[String(code || "").trim()];
   const result = redeemCode(session.account, coinCodes, code);
   updateAccount(socket, session, result);
+  if (result.ok && entry?.type === "coins") {
+    incrementAchievement(session, "coinPacksOpened");
+  }
 }
 
 function handleSetSurvivalMode(socket, session, mode) {
@@ -1533,6 +1563,7 @@ function completeChallengeForTeam(session) {
     const result = completeChallenge(member.account);
     member.account = result.account;
     persistSessionAccount(member);
+    updateTitleAchievements(member);
     member.player.location = "island";
     member.player.x = -54 + Math.random() * 5;
     member.player.y = 3;
@@ -1650,6 +1681,7 @@ function sendAccount(socket, account) {
     levelRewards: LEVEL_REWARDS,
     titleCatalog,
     titleColors: TITLE_COLORS,
+    titlePlayers: account.isHost ? titlePlayers() : undefined,
     coinCodes: account.isHost ? coinCodes : undefined
   });
 }
@@ -1742,24 +1774,83 @@ function handleAdminUpsertTitle(socket, session, message) {
   }
   const id = `title-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || Date.now()}`;
   titleCatalog[id] = { id, name, color };
-  for (const account of Object.values(accounts)) {
-    account.titles ||= [DEFAULT_TITLE_ID];
-    if (!account.titles.includes(id)) account.titles.push(id);
-  }
-  for (const onlineSession of sessions.values()) {
-    onlineSession.account.titles ||= [DEFAULT_TITLE_ID];
-    if (!onlineSession.account.titles.includes(id)) onlineSession.account.titles.push(id);
-    sendAccount(onlineSession.socket, onlineSession.account);
-  }
   saveTitles();
-  saveAccounts();
+  sendAccount(socket, session.account);
   send(socket, "notice", { message: `已新增稱號「${name}」。` });
 }
 
-function addChat(sender, rawText) {
+function handleAdminGrantTitle(socket, session, rawTitleId, rawAccountCode) {
+  if (!session.account.isHost) {
+    send(socket, "notice", { message: "只有主機帳號可以發稱號。" });
+    return;
+  }
+  const titleId = String(rawTitleId || "").trim();
+  const accountCode = String(rawAccountCode || "").trim();
+  const account = accounts[accountCode];
+  if (!titleCatalog[titleId]) {
+    send(socket, "notice", { message: "找不到這個稱號。" });
+    return;
+  }
+  if (!account) {
+    send(socket, "notice", { message: "找不到這個玩家。" });
+    return;
+  }
+  grantTitleToAccount(account, titleId);
+  const online = [...sessions.values()].find((candidate) => candidate.account.code === accountCode);
+  if (online) {
+    grantTitleToAccount(online.account, titleId);
+    sendAccount(online.socket, online.account);
+  }
+  saveAccounts();
+  sendAccount(socket, session.account);
+  send(socket, "notice", { message: `已把「${titleCatalog[titleId].name}」發給 ${accountCode}。` });
+}
+
+function titlePlayers() {
+  return Object.values(accounts).map((account) => ({
+    code: account.code,
+    titles: account.titles || [DEFAULT_TITLE_ID]
+  }));
+}
+
+function grantTitleToAccount(account, titleId) {
+  account.titles ||= [DEFAULT_TITLE_ID];
+  if (!account.titles.includes(titleId)) account.titles.push(titleId);
+}
+
+function grantTitle(session, titleId) {
+  if (!titleCatalog[titleId]) return false;
+  session.account.titles ||= [DEFAULT_TITLE_ID];
+  if (session.account.titles.includes(titleId)) return false;
+  session.account.titles.push(titleId);
+  persistSessionAccount(session);
+  sendAccount(session.socket, session.account);
+  send(session.socket, "notice", { message: `解鎖稱號「${titleCatalog[titleId].name}」。` });
+  return true;
+}
+
+function updateTitleAchievements(session) {
+  if (!session?.account) return;
+  const achievements = session.account.achievements || {};
+  if (!session.account.isHost && Number(session.account.level || 1) >= 70) grantTitle(session, "super-cat");
+  if (achievements.ferrisRides >= 1 && achievements.swingRides >= 1 && achievements.slideRides >= 1) grantTitle(session, "park-lover-kitten");
+  if (session.account.survivalMode === "adult" && achievements.monstersDefeated >= 5) grantTitle(session, "monster-king");
+  if (achievements.coinPacksOpened >= 1) grantTitle(session, "lucky-coin-king");
+  if (achievements.chatMessages >= 10) grantTitle(session, "chat-king");
+}
+
+function incrementAchievement(session, key) {
+  session.account.achievements ||= {};
+  session.account.achievements[key] = Number(session.account.achievements[key] || 0) + 1;
+  persistSessionAccount(session);
+  updateTitleAchievements(session);
+}
+
+function addChat(session, rawText) {
   const text = String(rawText || "").trim().slice(0, 120);
   if (!text) return;
-  chatLog.push({ sender, text, at: Date.now() });
+  incrementAchievement(session, "chatMessages");
+  chatLog.push({ sender: session.account.code, text, at: Date.now() });
   chatLog = chatLog.slice(-30);
   broadcast("chat", { chatLog });
 }
