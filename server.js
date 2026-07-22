@@ -61,6 +61,7 @@ let accounts = {};
 let coinCodes = structuredClone(DEFAULT_COIN_CODES);
 let chatLog = [];
 let worldCoins = makeWorldCoins(80);
+let worldBushes = makeHiddenBushes();
 
 await loadData();
 
@@ -115,6 +116,7 @@ async function loadData() {
       account.isHost = Boolean(HOST_CODE && account.code === HOST_CODE);
       if (account.isHost) account.coins = 999999999;
       if (account.isHost) account.level = null;
+      account.diamonds ??= 0;
       account.equipped ||= { hat: null, clothes: null, tail: null, trail: null };
       account.equipped.trail ??= null;
       account.equipped.pet ??= null;
@@ -243,6 +245,9 @@ function handleMessage(socket, message) {
       break;
     case "clearHouse":
       handleClearHouse(socket, session);
+      break;
+    case "searchBush":
+      handleSearchBush(socket, session, message.bushId);
       break;
     case "sendGift":
       handleSendGift(socket, session, message.friendCode, message.itemId);
@@ -398,6 +403,7 @@ function tickWorld() {
   }
   broadcast("state", {
     coins: worldCoins,
+    bushes: worldBushes,
     swing: SWING,
     houses: Object.values(accounts).filter((account) => account.house).map((account) => ({
       owner: account.code,
@@ -1216,8 +1222,63 @@ function collectNearbyCoins(session) {
   }
 }
 
+function handleSearchBush(socket, session, bushId) {
+  const bush = worldBushes.find((candidate) => candidate.id === bushId && !candidate.searched);
+  if (!bush) {
+    send(socket, "notice", { message: "這個草叢已經被翻過了。" });
+    return;
+  }
+  if (session.player.location !== "island") {
+    send(socket, "notice", { message: "要在島上才能翻草叢。" });
+    return;
+  }
+  const distance = Math.hypot(session.player.x - bush.x, session.player.z - bush.z);
+  if (distance > 4.2) {
+    send(socket, "notice", { message: "靠近草叢一點再翻開。" });
+    return;
+  }
+
+  bush.searched = true;
+  const foundDiamond = Math.random() < 0.42;
+  if (foundDiamond) {
+    session.account.diamonds = Number(session.account.diamonds || 0) + 1;
+    if (!session.account.isHost) {
+      session.account.level = Math.max(1, Number(session.account.level || 1)) + 1;
+    }
+    persistSessionAccount(session);
+    send(socket, "account", { account: session.account, shopItems: SHOP_ITEMS, coinCodes: session.account.isHost ? coinCodes : undefined });
+    send(socket, "notice", { message: session.account.isHost ? "翻開草叢，找到 1 顆鑽石。" : `翻開草叢，找到 1 顆鑽石，升到 Lv. ${session.account.level}。` });
+  } else {
+    send(socket, "notice", { message: "翻開草叢，這次沒有找到鑽石。" });
+  }
+  setTimeout(() => resetBush(bush), 45000);
+}
+
+function resetBush(bush) {
+  const index = worldBushes.findIndex((candidate) => candidate.id === bush.id);
+  if (index === -1) return;
+  worldBushes[index] = { ...bush, searched: false };
+}
+
 function makeWorldCoins(count) {
   return Array.from({ length: count }, () => makeCoin());
+}
+
+function makeHiddenBushes() {
+  return [
+    [-88, 0, -86], [-79, 0, -93], [-92, 0, 76], [-82, 0, 88],
+    [88, 0, -82], [78, 0, -92], [92, 0, 82], [80, 0, 92],
+    [-104, 0, -12], [-100, 0, 18], [104, 0, -18], [101, 0, 22],
+    [-20, 0, -103], [18, 0, -101], [-24, 0, 104], [26, 0, 101],
+    [-68, 0, 62], [-58, 0, 74], [63, 0, 64], [72, 0, 54],
+    [-67, 0, -61], [-55, 0, -73], [67, 0, -62], [75, 0, -52]
+  ].map(([x, y, z], index) => ({
+    id: `bush-${index + 1}`,
+    x,
+    y: islandHeight(x, z) + 0.35 + y,
+    z,
+    searched: false
+  }));
 }
 
 function makeCoin(existingId) {

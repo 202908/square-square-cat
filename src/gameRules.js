@@ -244,6 +244,7 @@ export function createAccount(code, overrides = {}) {
     code: accountCode,
     level: isHost ? null : 1,
     coins: isHost ? 999999999 : 0,
+    diamonds: 0,
     isHost,
     catVariant: isHost ? "host" : pickRandomCatVariant(),
     inventory: [],

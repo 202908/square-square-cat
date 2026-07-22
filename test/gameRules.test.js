@@ -40,6 +40,7 @@ test("host account can be created without exposing a real secret", () => {
 test("player account gets one allowed cat skin at creation", () => {
   const account = createAccount("abc");
   assert.equal(CAT_VARIANTS.includes(account.catVariant), true);
+  assert.equal(account.diamonds, 0);
   assert.deepEqual(account.giftInbox, []);
 });
 

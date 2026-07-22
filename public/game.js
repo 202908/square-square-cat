@@ -9,6 +9,7 @@ const state = {
   players: new Map(),
   meshes: new Map(),
   coinMeshes: new Map(),
+  bushMeshes: new Map(),
   houseMeshes: new Map(),
   furnitureMeshes: new Map(),
   keys: new Set(),
@@ -37,6 +38,7 @@ const els = {
   accountName: document.querySelector("#accountName"),
   levelText: document.querySelector("#levelText"),
   coinAmount: document.querySelector("#coinAmount"),
+  diamondAmount: document.querySelector("#diamondAmount"),
   coinCodeButton: document.querySelector("#coinCodeButton"),
   friendsButton: document.querySelector("#friendsButton"),
   challengeButton: document.querySelector("#challengeButton"),
@@ -56,6 +58,7 @@ const els = {
   attackButton: document.querySelector("#attackButton"),
   enterHouseButton: document.querySelector("#enterHouseButton"),
   clearHouseActionButton: document.querySelector("#clearHouseActionButton"),
+  searchBushButton: document.querySelector("#searchBushButton"),
   swingButton: document.querySelector("#swingButton"),
   flyUpButton: document.querySelector("#flyUpButton"),
   flyDownButton: document.querySelector("#flyDownButton"),
@@ -174,6 +177,11 @@ function bindUi() {
     send(me?.location === "room" ? "leaveHouse" : "enterHouse");
   });
   els.clearHouseActionButton.addEventListener("click", () => send("clearHouse"));
+  els.searchBushButton.addEventListener("click", () => {
+    const me = state.players.get(state.myId);
+    const bush = nearestBush(me);
+    if (bush) send("searchBush", { bushId: bush.id });
+  });
   els.swingButton.addEventListener("click", () => {
     const me = state.players.get(state.myId);
     send(me?.ride === "swing" ? "swingDismount" : "swingMount");
@@ -220,7 +228,7 @@ function handleServerMessage(message) {
   if (message.type === "authError") showAuthError(message);
   if (message.type === "authed") handleAuthed(message);
   if (message.type === "account") updateAccount(message);
-  if (message.type === "state") updateWorldState(message.players, message.coins || [], message.houses || [], message.swing);
+  if (message.type === "state") updateWorldState(message.players, message.coins || [], message.houses || [], message.swing, message.bushes || []);
   if (message.type === "chat") renderChat(message.chatLog);
   if (message.type === "notice") showNotice(message.message);
   if (message.type === "flightInvite") showFlightInvite(message);
@@ -289,6 +297,7 @@ function updateAccount(message) {
   els.accountName.textContent = state.account.code;
   els.levelText.textContent = state.account.isHost ? "主機" : `Lv. ${state.account.level}`;
   els.coinAmount.textContent = state.account.isHost ? "金幣 ∞" : `金幣 ${state.account.coins}`;
+  els.diamondAmount.textContent = `鑽石 ${Number(state.account.diamonds || 0)}`;
   els.onlinePlayersButton.classList.toggle("hidden", !state.account.isHost);
   els.adminButton.classList.toggle("hidden", !state.account.isHost);
   const hasWings = clientCanFly(state.account);
@@ -520,7 +529,7 @@ function createRoom() {
   scene.add(roomGroup);
 }
 
-function updateWorldState(players, coins, houses = [], swing) {
+function updateWorldState(players, coins, houses = [], swing, bushes = []) {
   const ids = new Set(players.map((player) => player.id));
   for (const [id, mesh] of state.meshes) {
     if (!ids.has(id)) {
@@ -538,6 +547,7 @@ function updateWorldState(players, coins, houses = [], swing) {
     updateCatMesh(state.meshes.get(player.id), player);
   });
   updateCoinMeshes(coins);
+  updateBushMeshes(bushes);
   updateHouseMeshes(houses);
   updateSwingMesh(swing);
   const me = state.players.get(state.myId);
@@ -547,11 +557,11 @@ function updateWorldState(players, coins, houses = [], swing) {
   }
   els.enterHouseButton.textContent = me?.location === "room" ? "離開" : "進入";
   els.swingButton.textContent = me?.ride === "swing" ? "下鞦韆" : "上鞦韆";
-  updateActionButtons(me, houses);
+  updateActionButtons(me, houses, bushes);
   updateRoomFurniture(me?.roomItems || []);
 }
 
-function updateActionButtons(me, houses) {
+function updateActionButtons(me, houses, bushes = []) {
   if (!me) return;
   const nearPlayer = [...state.players.values()].some((player) => {
     if (player.id === state.myId || player.location !== me.location) return false;
@@ -560,12 +570,30 @@ function updateActionButtons(me, houses) {
   const ownHouse = houses.find((house) => house.owner === state.account?.code);
   const nearHouse = ownHouse && Math.hypot(ownHouse.x - me.x, ownHouse.z - me.z) < 6;
   const nearSwing = Math.hypot(12 - me.x, -28 - me.z) < 7;
+  const nearBush = Boolean(nearestBush(me, bushes));
 
   els.stackButton.classList.toggle("hidden", !nearPlayer);
   els.attackButton.classList.toggle("hidden", !nearPlayer);
   els.enterHouseButton.classList.toggle("hidden", !(me.location === "room" || nearHouse));
   els.clearHouseActionButton.classList.toggle("hidden", me.location !== "room");
+  els.searchBushButton.classList.toggle("hidden", !(me.location === "island" && nearBush));
   els.swingButton.classList.toggle("hidden", !(me.ride === "swing" || (me.location === "island" && nearSwing)));
+}
+
+function nearestBush(me, bushes = null) {
+  if (!me) return null;
+  let best = null;
+  let bestDistance = Infinity;
+  const list = bushes || [...state.bushMeshes.values()].map((mesh) => mesh.userData.bush).filter(Boolean);
+  for (const bush of list) {
+    if (bush.searched) continue;
+    const distance = Math.hypot(bush.x - me.x, bush.z - me.z);
+    if (distance < 4.2 && distance < bestDistance) {
+      best = bush;
+      bestDistance = distance;
+    }
+  }
+  return best;
 }
 
 function createCatMesh(player) {
@@ -720,6 +748,55 @@ function updateCoinMeshes(coins) {
     mesh.position.set(coin.x, coin.y + Math.sin(Date.now() * 0.006 + coin.x) * 0.16, coin.z);
     mesh.rotation.z += 0.08;
   }
+}
+
+function updateBushMeshes(bushes) {
+  const visibleBushes = bushes.filter((bush) => !bush.searched);
+  const ids = new Set(visibleBushes.map((bush) => bush.id));
+  for (const [id, mesh] of state.bushMeshes) {
+    if (!ids.has(id)) {
+      scene.remove(mesh);
+      state.bushMeshes.delete(id);
+    }
+  }
+  for (const bush of visibleBushes) {
+    if (!state.bushMeshes.has(bush.id)) {
+      const mesh = createBushMesh();
+      state.bushMeshes.set(bush.id, mesh);
+      scene.add(mesh);
+    }
+    const mesh = state.bushMeshes.get(bush.id);
+    mesh.userData.bush = bush;
+    mesh.position.set(bush.x, bush.y, bush.z);
+    mesh.rotation.y += 0.004;
+  }
+}
+
+function createBushMesh() {
+  const group = new THREE.Group();
+  const colors = [0x2f8f5b, 0x46b46c, 0x7ed982];
+  const offsets = [
+    [0, 0.55, 0],
+    [-0.8, 0.45, 0.2],
+    [0.75, 0.42, -0.15],
+    [0.1, 0.86, -0.52],
+    [-0.2, 0.28, 0.72]
+  ];
+  offsets.forEach(([x, y, z], index) => {
+    const leaf = new THREE.Mesh(
+      new THREE.SphereGeometry(index === 0 ? 0.95 : 0.7, 12, 8),
+      new THREE.MeshStandardMaterial({ color: colors[index % colors.length], roughness: 0.84 })
+    );
+    leaf.position.set(x, y, z);
+    group.add(leaf);
+  });
+  const sparkle = new THREE.Mesh(
+    new THREE.OctahedronGeometry(0.22, 0),
+    new THREE.MeshStandardMaterial({ color: 0x8ed7ff, emissive: 0x17527a, roughness: 0.35 })
+  );
+  sparkle.position.set(0.2, 1.4, 0.1);
+  group.add(sparkle);
+  return group;
 }
 
 function updateHouseMeshes(houses) {
