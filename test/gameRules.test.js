@@ -16,6 +16,7 @@ import {
   equipItem,
   getChallengePlatforms,
   updateSurvivalStats,
+  damageMonster,
   richestDiamondAccountCode,
   isValidNewAccountCode,
   redeemCode,
@@ -265,4 +266,15 @@ test("adult survival death resets hunger and thirst", () => {
   assert.equal(result.died, true);
   assert.equal(result.account.hunger, 100);
   assert.equal(result.account.thirst, 100);
+});
+
+test("monster dies after three hits", () => {
+  const monster = { hp: 3 };
+  const first = damageMonster(monster);
+  const second = damageMonster(first.monster);
+  const third = damageMonster(second.monster);
+
+  assert.equal(first.dead, false);
+  assert.equal(second.dead, false);
+  assert.equal(third.dead, true);
 });

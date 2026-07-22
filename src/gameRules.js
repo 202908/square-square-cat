@@ -598,6 +598,13 @@ export function clampPercent(value) {
   return Math.max(0, Math.min(100, number));
 }
 
+export function damageMonster(monster) {
+  const nextMonster = structuredClone(monster);
+  nextMonster.hp = Math.max(0, Number(nextMonster.hp || 3) - 1);
+  nextMonster.hitUntil = Date.now() + 550;
+  return { monster: nextMonster, dead: nextMonster.hp <= 0 };
+}
+
 export function claimLevelReward(account, level) {
   if (account.isHost) {
     return { ok: false, message: "主機不用領等級獎勵，已經是無限資源。" };

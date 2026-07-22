@@ -21,6 +21,7 @@ import {
   claimLevelReward,
   completeChallenge,
   createAccount,
+  damageMonster,
   equipItem,
   getChallengePlatforms,
   isValidNewAccountCode,
@@ -78,6 +79,7 @@ const FERRIS = {
   icon: "jump-cat",
   platformGuests: []
 };
+const RIVER = { z: 8, width: 8, xMin: -92, xMax: 92 };
 
 const sessions = new Map();
 const sockets = new Map();
@@ -594,14 +596,24 @@ function updatePlayer(session, dt) {
   player.y = clamp(player.y, floorY, 60);
   collectNearbyCoins(session);
   collectNearbySurvivalPickups(session);
+  drinkFromRiver(session);
   handleHazardHits(session);
 }
 
 function updateSurvivalWorld(dt) {
   const now = Date.now();
   for (const hazard of survivalHazards) {
+    if (hazard.dead) continue;
     hazard.phase += dt * hazard.speed;
-    hazard.y = islandHeight(hazard.x, hazard.z) + 0.8 + Math.abs(Math.sin(hazard.phase)) * 3.4;
+    const target = nearestMonsterTarget(hazard);
+    if (target) {
+      const dx = target.player.x - hazard.x;
+      const dz = target.player.z - hazard.z;
+      const distance = Math.max(0.001, Math.hypot(dx, dz));
+      hazard.x += (dx / distance) * hazard.moveSpeed * dt;
+      hazard.z += (dz / distance) * hazard.moveSpeed * dt;
+    }
+    hazard.y = islandHeight(hazard.x, hazard.z) + 0.8 + Math.abs(Math.sin(hazard.phase)) * 1.7;
   }
   for (const session of sessions.values()) {
     if (session.player.location !== "island" || session.account.isHost) continue;
@@ -620,6 +632,20 @@ function updateSurvivalWorld(dt) {
       send(session.socket, "notice", { message: "你的飢餓或水分變成 0，回到出生點重新開始。" });
     }
   }
+}
+
+function nearestMonsterTarget(monster) {
+  let best = null;
+  let bestDistance = Infinity;
+  for (const session of sessions.values()) {
+    if (session.player.location !== "island") continue;
+    const distance = Math.hypot(session.player.x - monster.x, session.player.z - monster.z);
+    if (distance <= 36 && distance < bestDistance) {
+      best = session;
+      bestDistance = distance;
+    }
+  }
+  return best;
 }
 
 function updateChallengePlayer(session, dt) {
@@ -728,8 +754,12 @@ function detachFromStack(player) {
 
 function handleAttack(session) {
   const target = findPlayerInFront(session, 4);
-  if (!target) return;
   session.player.attackUntil = Date.now() + 450;
+  if (!target) {
+    const monster = findMonsterInFront(session, 5);
+    if (monster) hitMonster(session, monster);
+    return;
+  }
   const dx = target.player.x - session.player.x;
   const dz = target.player.z - session.player.z;
   const distance = Math.max(0.001, Math.hypot(dx, dz));
@@ -740,6 +770,45 @@ function handleAttack(session) {
   target.player.vy = 7.5;
   target.player.onGround = false;
   broadcast("notice", { message: `${displayNameFor(session.account)} 咬了 ${displayNameFor(target.account)} 一下。` });
+}
+
+function findMonsterInFront(session, range) {
+  const player = session.player;
+  const forwardX = Math.sin(player.yaw);
+  const forwardZ = Math.cos(player.yaw);
+  let best = null;
+  let bestDistance = Infinity;
+  for (const monster of survivalHazards) {
+    if (monster.dead) continue;
+    const dx = monster.x - player.x;
+    const dz = monster.z - player.z;
+    const distance = Math.hypot(dx, dz);
+    if (distance > range || distance < 0.01) continue;
+    const dot = (dx / distance) * forwardX + (dz / distance) * forwardZ;
+    if (dot > 0.25 && distance < bestDistance) {
+      best = monster;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
+function hitMonster(session, monster) {
+  const result = damageMonster(monster);
+  Object.assign(monster, result.monster);
+  const dx = monster.x - session.player.x;
+  const dz = monster.z - session.player.z;
+  const distance = Math.max(0.001, Math.hypot(dx, dz));
+  monster.x += (dx / distance) * 1.6;
+  monster.z += (dz / distance) * 1.6;
+  monster.phase += 1.2;
+  if (result.dead) {
+    monster.dead = true;
+    send(session.socket, "notice", { message: "怪物被打倒了。" });
+    setTimeout(() => respawnMonster(monster), 7000);
+  } else {
+    send(session.socket, "notice", { message: `打到怪物，還要 ${monster.hp} 下。` });
+  }
 }
 
 function handleSlideDown(socket, session) {
@@ -1631,23 +1700,33 @@ function collectNearbySurvivalPickups(session) {
     const distance = Math.hypot(session.player.x - pickup.x, session.player.z - pickup.z);
     if (distance > 2.2 || Math.abs(session.player.y - pickup.y) > 4) continue;
     pickup.taken = true;
-    if (pickup.kind === "meat") {
-      session.account.hunger = Math.min(100, Number(session.account.hunger || 0) + 28);
-      send(session.socket, "notice", { message: "吃到肉塊，飢餓值回復。" });
-    } else {
-      session.account.thirst = Math.min(100, Number(session.account.thirst || 0) + 32);
-      send(session.socket, "notice", { message: "撿到水壺，水分回復。" });
-    }
+    session.account.hunger = Math.min(100, Number(session.account.hunger || 0) + 28);
+    send(session.socket, "notice", { message: "吃到肉塊，飢餓值回復。" });
     persistSessionAccount(session);
     sendAccount(session.socket, session.account);
     setTimeout(() => respawnSurvivalPickup(pickup), 12000);
   }
 }
 
+function drinkFromRiver(session) {
+  if (session.account.survivalMode !== "adult" || session.player.location !== "island") return;
+  const inRiver = session.player.x >= RIVER.xMin
+    && session.player.x <= RIVER.xMax
+    && Math.abs(session.player.z - RIVER.z) <= RIVER.width / 2 + 1;
+  if (!inRiver || Number(session.account.thirst || 100) >= 100) return;
+  session.account.thirst = Math.min(100, Number(session.account.thirst || 0) + 0.55);
+  if (Date.now() > Number(session.player.riverNoticeAfter || 0)) {
+    send(session.socket, "notice", { message: "你在溪流旁喝水，水分正在回復。" });
+    session.player.riverNoticeAfter = Date.now() + 4000;
+  }
+  persistSessionAccount(session);
+}
+
 function handleHazardHits(session) {
   const player = session.player;
   if (player.location !== "island" || Date.now() < Number(player.hazardCooldownUntil || 0)) return;
   for (const hazard of survivalHazards) {
+    if (hazard.dead) continue;
     const distance = Math.hypot(player.x - hazard.x, player.z - hazard.z);
     if (distance > 2.4 || Math.abs(player.y - hazard.y) > 3.2) continue;
     const dx = player.x - hazard.x;
@@ -1720,14 +1799,14 @@ function makeWorldCoins(count) {
 }
 
 function makeSurvivalPickups() {
-  return Array.from({ length: 34 }, (_, index) => makeSurvivalPickup(index));
+  return Array.from({ length: 24 }, (_, index) => makeSurvivalPickup(index));
 }
 
 function makeSurvivalPickup(index) {
   const position = randomIslandPoint(96);
   return {
     id: `survival-${index + 1}`,
-    kind: index % 2 === 0 ? "meat" : "water",
+    kind: "meat",
     x: position.x,
     y: islandHeight(position.x, position.z) + 0.8,
     z: position.z,
@@ -1741,17 +1820,41 @@ function respawnSurvivalPickup(pickup) {
 }
 
 function makeSurvivalHazards() {
-  return Array.from({ length: 14 }, (_, index) => {
-    const position = randomIslandPoint(88);
+  return Array.from({ length: 18 }, (_, index) => {
+    const position = randomIslandEdgePoint();
     return {
       id: `hazard-${index + 1}`,
       x: position.x,
       y: islandHeight(position.x, position.z) + 1,
       z: position.z,
       phase: Math.random() * Math.PI * 2,
-      speed: 1.5 + Math.random() * 0.8
+      speed: 1.5 + Math.random() * 0.8,
+      moveSpeed: 4.8 + Math.random() * 2.2,
+      hp: 3,
+      hitUntil: 0,
+      dead: false
     };
   });
+}
+
+function respawnMonster(monster) {
+  const position = randomIslandEdgePoint();
+  Object.assign(monster, {
+    x: position.x,
+    y: islandHeight(position.x, position.z) + 1,
+    z: position.z,
+    phase: Math.random() * Math.PI * 2,
+    moveSpeed: 4.8 + Math.random() * 2.2,
+    hp: 3,
+    hitUntil: 0,
+    dead: false
+  });
+}
+
+function randomIslandEdgePoint() {
+  const angle = Math.random() * Math.PI * 2;
+  const radius = 104 + Math.random() * 9;
+  return { x: Math.cos(angle) * radius, z: Math.sin(angle) * radius };
 }
 
 function randomIslandPoint(limit = 96) {

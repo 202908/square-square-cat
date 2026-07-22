@@ -427,6 +427,13 @@ function createIsland() {
   rim.rotation.x = Math.PI / 2;
   rim.position.y = 0.2;
   scene.add(rim);
+
+  const river = new THREE.Mesh(
+    new THREE.BoxGeometry(184, 0.16, 8),
+    new THREE.MeshStandardMaterial({ color: 0x62b7ff, roughness: 0.28, transparent: true, opacity: 0.72 })
+  );
+  river.position.set(0, 0.28, 8);
+  scene.add(river);
 }
 
 function createPlayground() {
@@ -924,37 +931,50 @@ function updateSurvivalPickupMeshes(pickups) {
 }
 
 function createSurvivalPickupMesh(kind) {
-  if (kind === "water") {
-    const group = new THREE.Group();
-    const bottle = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.36, 1, 12), new THREE.MeshStandardMaterial({ color: 0x62b7ff, roughness: 0.35, transparent: true, opacity: 0.85 }));
-    bottle.position.y = 0.5;
-    group.add(bottle);
-    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.22, 10), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.45 }));
-    cap.position.y = 1.12;
-    group.add(cap);
-    return group;
-  }
   return new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.45, 0.65), new THREE.MeshStandardMaterial({ color: 0xff6b6b, roughness: 0.55 }));
 }
 
 function updateHazardMeshes(hazards) {
-  const ids = new Set(hazards.map((hazard) => hazard.id));
+  const activeHazards = hazards.filter((hazard) => !hazard.dead);
+  const ids = new Set(activeHazards.map((hazard) => hazard.id));
   for (const [id, mesh] of state.hazardMeshes) {
     if (!ids.has(id)) {
       scene.remove(mesh);
       state.hazardMeshes.delete(id);
     }
   }
-  for (const hazard of hazards) {
+  for (const hazard of activeHazards) {
     if (!state.hazardMeshes.has(hazard.id)) {
-      const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.9, 18, 12), new THREE.MeshStandardMaterial({ color: 0xfff1a8, roughness: 0.45 }));
+      const mesh = createMonsterMesh();
       state.hazardMeshes.set(hazard.id, mesh);
       scene.add(mesh);
     }
     const mesh = state.hazardMeshes.get(hazard.id);
     mesh.position.set(hazard.x, hazard.y, hazard.z);
     mesh.scale.set(1.15, 0.82 + Math.abs(Math.sin(Date.now() * 0.006)) * 0.35, 1.15);
+    updateMonsterFlash(mesh, hazard);
   }
+}
+
+function createMonsterMesh() {
+  const group = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.9, 18, 12), new THREE.MeshStandardMaterial({ color: 0xfff1a8, roughness: 0.45 }));
+  body.userData.baseColor = 0xfff1a8;
+  group.add(body);
+  [-0.35, 0.35].forEach((x) => {
+    const horn = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.45, 8), new THREE.MeshStandardMaterial({ color: 0xd9c7ff, roughness: 0.5 }));
+    horn.position.set(x, 0.82, 0);
+    group.add(horn);
+  });
+  return group;
+}
+
+function updateMonsterFlash(group, hazard) {
+  const hit = Number(hazard.hitUntil || 0) > Date.now();
+  group.traverse((part) => {
+    if (!part.isMesh || part.userData.baseColor === undefined) return;
+    part.material.color.setHex(hit ? 0xff4f5f : part.userData.baseColor);
+  });
 }
 
 function updateBushMeshes(bushes) {
