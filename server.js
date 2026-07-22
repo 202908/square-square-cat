@@ -587,12 +587,19 @@ function updateRoomPlayer(session, dt) {
 
 function handleStack(session) {
   const player = session.player;
+  if (player.carrying) {
+    const carriedSession = sessions.get(player.carrying);
+    detachCarried(player);
+    if (carriedSession) {
+      broadcast("notice", { message: `${displayNameFor(session.account)} 讓 ${displayNameFor(carriedSession.account)} 下來。` });
+    }
+    return;
+  }
   if (player.carriedBy) {
     detachFromCarrier(player);
     player.y += 1.5;
     return;
   }
-  if (player.carrying) return;
 
   const target = findPlayerInFront(session, 4);
   if (!target || target.player.carriedBy) return;
@@ -607,14 +614,18 @@ function detachFromCarrier(player) {
   player.carriedBy = null;
 }
 
-function detachFromStack(player) {
-  detachFromCarrier(player);
+function detachCarried(player) {
   const carried = player.carrying ? sessions.get(player.carrying)?.player : null;
   if (carried?.carriedBy === player.id) {
     carried.carriedBy = null;
     carried.y += 1.5;
   }
   player.carrying = null;
+}
+
+function detachFromStack(player) {
+  detachFromCarrier(player);
+  detachCarried(player);
 }
 
 function handleAttack(session) {

@@ -15,6 +15,7 @@ const state = {
   furnitureMeshes: new Map(),
   keys: new Set(),
   joystick: { active: false, x: 0, z: 0 },
+  actionCooldowns: {},
   jump: false,
   flyY: 0,
   authMode: "create",
@@ -162,8 +163,9 @@ function bindUi() {
       event.preventDefault();
       state.jump = true;
     }
-    if (event.code === "KeyE") send("stack");
-    if (event.code === "KeyF") send("attack");
+    if (event.repeat) return;
+    if (event.code === "KeyE") sendAction("stack");
+    if (event.code === "KeyF") sendAction("attack");
   });
   window.addEventListener("keyup", (event) => {
     state.keys.delete(event.code);
@@ -174,8 +176,8 @@ function bindUi() {
   holdButton(els.jumpButton, () => (state.jump = true), () => (state.jump = false));
   holdButton(els.flyUpButton, () => (state.flyY = 1), () => (state.flyY = 0));
   holdButton(els.flyDownButton, () => (state.flyY = -1), () => (state.flyY = 0));
-  els.stackButton.addEventListener("click", () => send("stack"));
-  els.attackButton.addEventListener("click", () => send("attack"));
+  els.stackButton.addEventListener("click", () => sendAction("stack"));
+  els.attackButton.addEventListener("click", () => sendAction("attack"));
   els.enterHouseButton.addEventListener("click", () => {
     const me = state.players.get(state.myId);
     send(me?.location === "room" ? "leaveHouse" : "enterHouse");
@@ -583,8 +585,10 @@ function updateActionButtons(me, houses, bushes = []) {
   const nearSwing = Math.hypot(12 - me.x, -28 - me.z) < 7;
   const nearSlideTop = me.location === "island" && Math.hypot(me.x + 28, me.z + 20) < 5.5 && me.y > 4.6;
   const nearBush = Boolean(nearestBush(me, bushes));
+  const canUseStack = nearPlayer || Boolean(me.carrying) || Boolean(me.carriedBy);
 
-  els.stackButton.classList.toggle("hidden", !nearPlayer);
+  els.stackButton.textContent = me.carrying ? "放下來" : me.carriedBy ? "跳下來" : "疊疊樂";
+  els.stackButton.classList.toggle("hidden", !canUseStack);
   els.attackButton.classList.toggle("hidden", !nearPlayer);
   els.enterHouseButton.classList.toggle("hidden", !(me.location === "room" || nearHouse));
   els.clearHouseActionButton.classList.toggle("hidden", me.location !== "room");
@@ -1761,6 +1765,13 @@ function send(type, payload = {}) {
   }
   showAuthStatus("伺服器還沒連上，請等一下或重新整理頁面。", true);
   return false;
+}
+
+function sendAction(type, payload = {}) {
+  const now = Date.now();
+  if (now - Number(state.actionCooldowns[type] || 0) < 180) return false;
+  state.actionCooldowns[type] = now;
+  return send(type, payload);
 }
 
 function escapeHtml(value) {
