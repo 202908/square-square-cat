@@ -517,18 +517,29 @@ function createWeatherEffects() {
   const rainbowColors = [0xff4f5f, 0xff9b3d, 0xffd95a, 0x67d88a, 0x62b7ff, 0x5b6dff, 0xb78cff];
   rainbowColors.forEach((color, index) => {
     const points = [];
-    const radius = 34 - index * 1.7;
-    for (let step = 0; step <= 48; step += 1) {
-      const angle = Math.PI * (step / 48);
+    const radius = 30 - index * 2.05;
+    for (let step = 0; step <= 64; step += 1) {
+      const angle = Math.PI * (step / 64);
       points.push(new THREE.Vector3(Math.cos(angle) * radius, Math.sin(angle) * radius, 0));
     }
-    const line = new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints(points),
-      new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.82, linewidth: 4 })
+    const arc = new THREE.Mesh(
+      new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points), 72, 0.62, 10, false),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.92 })
     );
-    rainbowGroup.add(line);
+    rainbowGroup.add(arc);
   });
-  rainbowGroup.position.set(0, 24, -88);
+  const cloudMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.86 });
+  for (const side of [-1, 1]) {
+    const cloud = new THREE.Group();
+    for (let i = 0; i < 4; i += 1) {
+      const puff = new THREE.Mesh(new THREE.SphereGeometry(2.8, 14, 8), cloudMaterial);
+      puff.scale.set(1.4, 0.48, 0.65);
+      puff.position.set(side * (27 + i * 2.8), -1.2 + Math.sin(i) * 0.5, 0);
+      cloud.add(puff);
+    }
+    rainbowGroup.add(cloud);
+  }
+  rainbowGroup.position.set(0, 38, -62);
   rainbowGroup.visible = false;
   scene.add(rainbowGroup);
 
@@ -1956,13 +1967,21 @@ function drawFlatLightning(ctx, x, y) {
 function drawFlatRainbow(ctx, width, height) {
   const colors = ["#ff4f5f", "#ff9b3d", "#ffd95a", "#67d88a", "#62b7ff", "#5b6dff", "#b78cff"];
   ctx.save();
-  ctx.lineWidth = 8;
+  ctx.lineCap = "round";
+  ctx.globalAlpha = 0.96;
+  ctx.lineWidth = 11;
+  const centerY = height * 0.76;
+  const radius = Math.min(width * 0.46, 250);
   colors.forEach((color, index) => {
     ctx.strokeStyle = color;
     ctx.beginPath();
-    ctx.arc(width / 2, height * 0.72, 190 - index * 9, Math.PI, 0);
+    ctx.arc(width / 2, centerY, radius - index * 13, Math.PI, 0);
     ctx.stroke();
   });
+  ctx.globalAlpha = 0.86;
+  ctx.fillStyle = "#ffffff";
+  drawFlatCloud(ctx, width / 2 - radius, centerY + 2, 0.9);
+  drawFlatCloud(ctx, width / 2 + radius, centerY + 2, 0.9);
   ctx.restore();
 }
 
@@ -2354,7 +2373,14 @@ function updateWeatherEffects(dt, weather) {
   }
   if (rainbowGroup) {
     rainbowGroup.visible = weather === "rainbow";
-    rainbowGroup.rotation.y = Math.sin((clock?.elapsedTime || 0) * 0.4) * 0.05;
+    if (rainbowGroup.visible && camera) {
+      const direction = new THREE.Vector3();
+      camera.getWorldDirection(direction);
+      rainbowGroup.position.copy(camera.position).add(direction.multiplyScalar(92));
+      rainbowGroup.position.y = Math.max(camera.position.y + 24, 34);
+      rainbowGroup.lookAt(camera.position);
+      rainbowGroup.rotation.z = Math.sin((clock?.elapsedTime || 0) * 0.55) * 0.025;
+    }
   }
   if (auroraGroup) {
     auroraGroup.visible = weather === "aurora";
