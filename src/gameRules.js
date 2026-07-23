@@ -10,6 +10,14 @@ export const CAT_VARIANTS = ["black", "white", "calico", "orange"];
 export const MAX_PLAYER_LEVEL = 100;
 export const MAX_CHALLENGE_STEP_Y = 2.8;
 export const CHALLENGE_BASE = { x: -760, y: 1.2, z: -720 };
+export const ROOM_CENTER = { x: 220, z: 0 };
+export const ROOM_SIZE = 36;
+export const ROOM_BOUNDS = {
+  minX: ROOM_CENTER.x - ROOM_SIZE / 2 + 3,
+  maxX: ROOM_CENTER.x + ROOM_SIZE / 2 - 3,
+  minZ: ROOM_CENTER.z - ROOM_SIZE / 2 + 3,
+  maxZ: ROOM_CENTER.z + ROOM_SIZE / 2 - 3
+};
 export const SURVIVAL_DRAIN_PER_SECOND = { hunger: 0.18, thirst: 0.24 };
 export const WEATHER_MODES = ["auto", "rain", "thunder", "rainbow", "aurora"];
 export const WEATHER_LABELS = {
@@ -203,6 +211,53 @@ export const FURNITURE_ITEMS = [
   ["nebula-beanbag", "星雲懶骨頭", 190],
   ["tiny-piano", "小鋼琴", 340]
 ].map(([id, name, price]) => ({ id, name, type: "furniture", price }));
+
+export function roomFurniturePlacement(itemId, existingItems = []) {
+  const occupied = new Set(existingItems.map((item) => `${Math.round(item.x * 10) / 10}:${Math.round(item.z * 10) / 10}`));
+  const baseSlots = [
+    { x: 207, z: -13 }, { x: 214, z: -13 }, { x: 221, z: -13 }, { x: 228, z: -13 }, { x: 233, z: -10 },
+    { x: 207, z: -6 }, { x: 214, z: -6 }, { x: 221, z: -6 }, { x: 228, z: -6 }, { x: 233, z: -3 },
+    { x: 207, z: 2 }, { x: 214, z: 2 }, { x: 221, z: 2 }, { x: 228, z: 2 }, { x: 233, z: 5 },
+    { x: 207, z: 10 }, { x: 214, z: 10 }, { x: 221, z: 10 }, { x: 228, z: 10 }, { x: 233, z: 12 }
+  ];
+  const preferredSlots = furnitureSlotGroup(itemId);
+  const slots = [...preferredSlots, ...baseSlots];
+  let hash = 0;
+  for (const char of itemId) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  for (let offset = 0; offset < slots.length; offset += 1) {
+    const slot = slots[(hash + offset) % slots.length];
+    const key = `${Math.round(slot.x * 10) / 10}:${Math.round(slot.z * 10) / 10}`;
+    if (!occupied.has(key)) return { x: slot.x, y: 1, z: slot.z, yaw: slot.yaw || 0 };
+  }
+  const row = existingItems.length % 5;
+  const col = Math.floor(existingItems.length / 5) % 5;
+  return { x: 208 + row * 6, y: 1, z: -12 + col * 6, yaw: 0 };
+}
+
+function furnitureSlotGroup(itemId) {
+  if (itemId.includes("bed") || itemId.includes("sofa") || itemId.includes("beanbag")) {
+    return [{ x: 211, z: -13, yaw: 0 }, { x: 229, z: -13, yaw: 0 }, { x: 211, z: 12, yaw: Math.PI }];
+  }
+  if (itemId.includes("table") || itemId.includes("desk") || itemId.includes("tea") || itemId.includes("piano")) {
+    return [{ x: 220, z: 0 }, { x: 214, z: 4 }, { x: 226, z: 4 }];
+  }
+  if (itemId.includes("chair") || itemId.includes("stool") || itemId.includes("pillow") || itemId.includes("cushion")) {
+    return [{ x: 214, z: -1 }, { x: 226, z: -1 }, { x: 214, z: 7 }, { x: 226, z: 7 }];
+  }
+  if (itemId.includes("lamp") || itemId.includes("lantern") || itemId.includes("light") || itemId.includes("plant") || itemId.includes("snow")) {
+    return [{ x: 207, z: -13 }, { x: 233, z: -13 }, { x: 207, z: 13 }, { x: 233, z: 13 }];
+  }
+  if (itemId.includes("rug") || itemId.includes("carpet") || itemId.includes("mat")) {
+    return [{ x: 220, z: 5 }, { x: 220, z: -5 }, { x: 214, z: 5 }, { x: 226, z: 5 }];
+  }
+  if (itemId.includes("shelf") || itemId.includes("cabinet") || itemId.includes("drawer") || itemId.includes("wardrobe") || itemId.includes("fridge") || itemId.includes("kitchen")) {
+    return [{ x: 206, z: -8, yaw: Math.PI / 2 }, { x: 206, z: 2, yaw: Math.PI / 2 }, { x: 232, z: -8, yaw: -Math.PI / 2 }];
+  }
+  if (itemId.includes("poster") || itemId.includes("window") || itemId.includes("curtain") || itemId.includes("garland") || itemId.includes("tv") || itemId.includes("mirror") || itemId.includes("clock")) {
+    return [{ x: 220, z: -14, yaw: 0 }, { x: 212, z: -14, yaw: 0 }, { x: 228, z: -14, yaw: 0 }];
+  }
+  return [{ x: 220, z: 9 }, { x: 211, z: 4 }, { x: 229, z: 4 }];
+}
 
 export const HOUSE_PAINT_STYLES = [
   ["red", "紅色", 0xff5a6c, "solid", 120],

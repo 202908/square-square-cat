@@ -13,6 +13,8 @@ import {
   HOST_PASSWORD,
   LEVEL_REWARDS,
   LEVEL_TASKS,
+  ROOM_BOUNDS,
+  ROOM_CENTER,
   SHOP_ITEMS,
   TITLE_COLORS,
   WEATHER_LABELS,
@@ -36,6 +38,7 @@ import {
   normalizeWeatherMode,
   redeemCode,
   richestDiamondAccountCode,
+  roomFurniturePlacement,
   sendCoinGift,
   sendDiamondGift,
   updateSurvivalStats,
@@ -789,8 +792,8 @@ function updateRoomPlayer(session, dt) {
     player.vy = 8;
     player.onGround = false;
   }
-  player.x = clamp(player.x + player.vx * dt, 188, 252);
-  player.z = clamp(player.z + player.vz * dt, -32, 32);
+  player.x = clamp(player.x + player.vx * dt, ROOM_BOUNDS.minX, ROOM_BOUNDS.maxX);
+  player.z = clamp(player.z + player.vz * dt, ROOM_BOUNDS.minZ, ROOM_BOUNDS.maxZ);
   player.y += player.vy * dt;
   if (player.y <= 1) {
     player.y = 1;
@@ -1618,9 +1621,9 @@ function handleEnterHouse(socket, session) {
   }
   session.player.location = "room";
   session.player.roomOwner = session.account.code;
-  session.player.x = 220;
+  session.player.x = ROOM_CENTER.x;
   session.player.y = 1;
-  session.player.z = 18;
+  session.player.z = ROOM_CENTER.z + 8;
   session.player.vx = 0;
   session.player.vy = 0;
   session.player.vz = 0;
@@ -1648,12 +1651,11 @@ function handlePlaceFurniture(socket, session, itemId) {
     send(socket, "notice", { message: "要進房間裡才能擺家具。" });
     return;
   }
+  const placement = roomFurniturePlacement(itemId, session.account.roomItems);
   session.account.roomItems.push({
     id: makeId(),
     itemId,
-    x: clamp(session.player.x + Math.sin(session.player.yaw) * 3, 194, 246),
-    y: 1,
-    z: clamp(session.player.z + Math.cos(session.player.yaw) * 3, -24, 24)
+    ...placement
   });
   session.account.inventory.splice(session.account.inventory.indexOf(itemId), 1);
   incrementAchievement(session, "furniturePlaced");

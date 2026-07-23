@@ -8,6 +8,7 @@ import {
   LEVEL_TASKS,
   MAX_CHALLENGE_STEP_Y,
   MAX_PLAYER_LEVEL,
+  ROOM_BOUNDS,
   SHOP_ITEMS,
   WEATHER_MODES,
   addFriend,
@@ -28,6 +29,7 @@ import {
   isValidNewAccountCode,
   makeGuestAccount,
   normalizeWeatherMode,
+  roomFurniturePlacement,
   redeemCode,
   sendCoinGift,
   sendDiamondGift
@@ -95,6 +97,19 @@ test("built-in achievement titles have the requested names and colors", () => {
 
 test("shop has at least fifty furniture items", () => {
   assert.ok(SHOP_ITEMS.filter((item) => item.type === "furniture").length >= 50);
+});
+
+test("room furniture placement uses fixed slots inside the smaller room", () => {
+  const placement = roomFurniturePlacement("cozy-cat-bed", []);
+  assert.ok(placement.x >= ROOM_BOUNDS.minX && placement.x <= ROOM_BOUNDS.maxX);
+  assert.ok(placement.z >= ROOM_BOUNDS.minZ && placement.z <= ROOM_BOUNDS.maxZ);
+  assert.equal(placement.y, 1);
+});
+
+test("room furniture placement avoids overlapping occupied slots", () => {
+  const first = roomFurniturePlacement("cozy-cat-bed", []);
+  const second = roomFurniturePlacement("cloud-sofa", [{ id: "one", itemId: "cozy-cat-bed", ...first }]);
+  assert.notDeepEqual({ x: second.x, z: second.z }, { x: first.x, z: first.z });
 });
 
 test("shop has at least one hundred visible non-furniture items", () => {

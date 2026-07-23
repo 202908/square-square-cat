@@ -124,6 +124,8 @@ let renderedChallengeLevel = null;
 const CHALLENGE_BASE = { x: -760, y: 1.2, z: -720 };
 const MAX_PLAYER_LEVEL = 100;
 const MAX_CHALLENGE_STEP_Y = 2.8;
+const ROOM_CENTER = { x: 220, z: 0 };
+const ROOM_SIZE = 36;
 const DAY_CYCLE_SECONDS = 180;
 const WEATHER_EFFECT_LABELS = { auto: "晴天/日夜", rain: "下雨", thunder: "打雷", rainbow: "彩虹", aurora: "極光" };
 const CHALLENGE_STAGE_COLORS = [0xffc5dc, 0xbfe8ff, 0xd9c7ff];
@@ -723,25 +725,25 @@ function addSwing(x, y, z) {
 function createRoom() {
   roomGroup = new THREE.Group();
   const floor = new THREE.Mesh(
-    new THREE.BoxGeometry(72, 0.8, 72),
+    new THREE.BoxGeometry(ROOM_SIZE, 0.8, ROOM_SIZE),
     new THREE.MeshStandardMaterial({ color: 0xf3d8ff, roughness: 0.72 })
   );
-  floor.position.set(220, 0.35, 0);
+  floor.position.set(ROOM_CENTER.x, 0.35, ROOM_CENTER.z);
   roomGroup.add(floor);
   const backWall = new THREE.Mesh(
-    new THREE.BoxGeometry(72, 18, 1),
+    new THREE.BoxGeometry(ROOM_SIZE, 18, 1),
     new THREE.MeshStandardMaterial({ color: 0xbfe8ff, roughness: 0.7 })
   );
-  backWall.position.set(220, 9, -36);
+  backWall.position.set(ROOM_CENTER.x, 9, ROOM_CENTER.z - ROOM_SIZE / 2);
   roomGroup.add(backWall);
   const sideWall = new THREE.Mesh(
-    new THREE.BoxGeometry(1, 18, 72),
+    new THREE.BoxGeometry(1, 18, ROOM_SIZE),
     new THREE.MeshStandardMaterial({ color: 0xffc5dc, roughness: 0.7 })
   );
-  sideWall.position.set(184, 9, 0);
+  sideWall.position.set(ROOM_CENTER.x - ROOM_SIZE / 2, 9, ROOM_CENTER.z);
   roomGroup.add(sideWall);
   const lamp = new THREE.PointLight(0xfff2d0, 2.8, 90);
-  lamp.position.set(220, 20, 8);
+  lamp.position.set(ROOM_CENTER.x, 18, ROOM_CENTER.z + 5);
   roomGroup.add(lamp);
   scene.add(roomGroup);
 }
@@ -1302,7 +1304,9 @@ function updateRoomFurniture(items) {
       state.furnitureMeshes.set(item.id, mesh);
       scene.add(mesh);
     }
-    state.furnitureMeshes.get(item.id).position.set(item.x, item.y, item.z);
+    const mesh = state.furnitureMeshes.get(item.id);
+    mesh.position.set(item.x, item.y, item.z);
+    mesh.rotation.y = item.yaw || 0;
   }
 }
 
@@ -1874,7 +1878,7 @@ function drawFlatWorld() {
   if (me.location === "challenge") {
     drawFlatChallenge(ctx, view, me);
   } else if (me.location === "room") {
-    drawFlatRoom(ctx, view, width, height);
+    drawFlatRoom(ctx, view, width, height, me);
   } else {
     drawFlatIsland(ctx, view, width, height);
   }
@@ -2024,11 +2028,44 @@ function drawFlatIsland(ctx, view, width, height) {
   }
 }
 
-function drawFlatRoom(ctx, view, width, height) {
+function drawFlatRoom(ctx, view, width, height, me) {
   ctx.fillStyle = "#bfe8ff";
   ctx.fillRect(0, view.groundY - 120, width, 120);
   ctx.fillStyle = "#f3d8ff";
   ctx.fillRect(0, view.groundY, width, height - view.groundY);
+  ctx.strokeStyle = "#ff9fc8";
+  ctx.lineWidth = 4;
+  ctx.strokeRect(view.toX(ROOM_CENTER.x - ROOM_SIZE / 2), view.groundY - 120, ROOM_SIZE * view.scale, 120);
+  for (const item of me.roomItems || []) drawFlatFurniture(ctx, view, item);
+}
+
+function drawFlatFurniture(ctx, view, item) {
+  const x = view.toX(item.x);
+  const y = view.groundY - (item.z - ROOM_CENTER.z) * 1.7 - 28;
+  const palette = furniturePalette(item.itemId);
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(-(item.yaw || 0) * 0.18);
+  ctx.fillStyle = hexColor(palette.color);
+  ctx.strokeStyle = "#5b4260";
+  ctx.lineWidth = 2;
+  if (item.itemId.includes("rug") || item.itemId.includes("mat") || item.itemId.includes("carpet")) {
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 24, 13, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  } else if (item.itemId.includes("lamp") || item.itemId.includes("lantern") || item.itemId.includes("plant") || item.itemId.includes("snow")) {
+    ctx.beginPath();
+    ctx.arc(0, -6, 13, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillRect(-3, 6, 6, 18);
+  } else {
+    roundRect(ctx, -20, -13, 40, 26, 8);
+    ctx.fill();
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 function drawFlatChallenge(ctx, view, me) {
