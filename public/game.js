@@ -889,18 +889,27 @@ function createCatMesh(player) {
   const petGroup = new THREE.Group();
   group.add(petGroup);
 
-  const earMaterial = new THREE.MeshStandardMaterial({ color: palette.body, roughness: 0.7 });
+  const earMaterial = new THREE.MeshStandardMaterial({ color: palette.ear || palette.body, roughness: 0.7 });
   const leftEar = new THREE.Mesh(new THREE.ConeGeometry(0.32, 0.55, 4), earMaterial);
   leftEar.name = "catEar";
-  leftEar.userData.baseColor = palette.body;
+  leftEar.userData.baseColor = palette.ear || palette.body;
   leftEar.position.set(-0.55, 1.45, 0.2);
   leftEar.rotation.y = Math.PI / 4;
   group.add(leftEar);
   const rightEar = leftEar.clone();
   rightEar.name = "catEar";
-  rightEar.userData.baseColor = palette.body;
+  rightEar.userData.baseColor = palette.ear || palette.body;
   rightEar.position.x = 0.55;
   group.add(rightEar);
+
+  if (player.catVariant === "host") {
+    const moon = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.34, 0.34),
+      new THREE.MeshBasicMaterial({ map: makeMoonTexture(), transparent: true })
+    );
+    moon.position.set(0, 0.98, 0.845);
+    group.add(moon);
+  }
 
   const label = document.createElement("canvas");
   label.width = 256;
@@ -927,12 +936,31 @@ function addPatch(group, x, y, z, color) {
 
 function catPalette(variant) {
   return {
-    host: { body: 0x8ed7ff, face: "#eaf8ff" },
+    host: { body: 0xff9fd0, ear: 0x62b7ff, face: "#fff2fb" },
     black: { body: 0x25282e, face: "#f5f1e8" },
     white: { body: 0xf6f2e9, face: "#ffffff" },
     calico: { body: 0xf5eee0, face: "#fff8ef" },
     orange: { body: 0xe88a35, face: "#ffe0b4" }
   }[variant] || { body: 0xf6f2e9, face: "#ffffff" };
+}
+
+function makeMoonTexture() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 96;
+  canvas.height = 96;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#ffe66d";
+  ctx.beginPath();
+  ctx.arc(46, 46, 26, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalCompositeOperation = "destination-out";
+  ctx.beginPath();
+  ctx.arc(58, 38, 25, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalCompositeOperation = "source-over";
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
 }
 
 function makeFaceTexture(faceColor) {
@@ -2142,6 +2170,7 @@ function drawFlatCat(ctx, view, player, isMe) {
   }
   ctx.fillStyle = hexColor(palette.body);
   ctx.fillRect(x - size / 2, y - size, size, size);
+  ctx.fillStyle = hexColor(palette.ear || palette.body);
   ctx.beginPath();
   ctx.moveTo(x - size / 2, y - size);
   ctx.lineTo(x - size * 0.25, y - size * 1.35);
@@ -2154,6 +2183,9 @@ function drawFlatCat(ctx, view, player, isMe) {
     ctx.fillRect(x - size * 0.38, y - size * 0.86, size * 0.22, size * 0.2);
     ctx.fillStyle = "#d77a2d";
     ctx.fillRect(x + size * 0.12, y - size * 0.55, size * 0.24, size * 0.2);
+  }
+  if (player.catVariant === "host") {
+    drawFlatMoon(ctx, x, y - size * 0.82, size * 0.18, hexColor(palette.body));
   }
   ctx.fillStyle = "#211a16";
   ctx.beginPath();
@@ -2175,6 +2207,7 @@ function drawFlatCat(ctx, view, player, isMe) {
 function drawFlatMiniCat(ctx, x, y, palette) {
   ctx.fillStyle = hexColor(palette.body);
   ctx.fillRect(x - 8, y - 14, 16, 16);
+  ctx.fillStyle = hexColor(palette.ear || palette.body);
   ctx.beginPath();
   ctx.moveTo(x - 8, y - 14);
   ctx.lineTo(x - 4, y - 22);
@@ -2185,6 +2218,19 @@ function drawFlatMiniCat(ctx, x, y, palette) {
   ctx.fillStyle = "#211a16";
   ctx.fillRect(x - 4, y - 8, 2, 2);
   ctx.fillRect(x + 3, y - 8, 2, 2);
+}
+
+function drawFlatMoon(ctx, x, y, radius, cutoutColor) {
+  ctx.save();
+  ctx.fillStyle = "#ffe66d";
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = cutoutColor;
+  ctx.beginPath();
+  ctx.arc(x + radius * 0.42, y - radius * 0.28, radius * 0.96, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
 }
 
 function drawFlatTrail(ctx, view, player, size) {
