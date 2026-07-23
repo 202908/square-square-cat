@@ -92,6 +92,7 @@ test("built-in achievement titles have the requested names and colors", () => {
   assert.equal(DEFAULT_TITLES["monster-king"].color, "yellow");
   assert.equal(DEFAULT_TITLES["lucky-coin-king"].color, "yellow");
   assert.deepEqual(DEFAULT_TITLES["chat-king"].colors, ["red", "yellow"]);
+  assert.equal(DEFAULT_TITLES["host-cat"].name, "月之貓");
   assert.deepEqual(DEFAULT_TITLES["host-cat"].colors, ["pink", "white", "lightBlue"]);
 });
 

@@ -35,7 +35,7 @@ export const DEFAULT_TITLES = {
   "monster-king": { id: "monster-king", name: "怪物消滅之王", color: "yellow" },
   "lucky-coin-king": { id: "lucky-coin-king", name: "幸運金幣之王", color: "yellow" },
   "chat-king": { id: "chat-king", name: "團聚貓貓王", colors: ["red", "yellow"] },
-  "host-cat": { id: "host-cat", name: "主機貓", colors: ["pink", "white", "lightBlue"] }
+  "host-cat": { id: "host-cat", name: "月之貓", colors: ["pink", "white", "lightBlue"] }
 };
 export const TITLE_COLORS = {
   black: "#111111",
