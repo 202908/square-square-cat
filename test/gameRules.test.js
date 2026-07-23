@@ -14,6 +14,7 @@ import {
   WEATHER_MODES,
   addFriend,
   applyHousePaint,
+  areHouseFriends,
   buyItem,
   challengeLevelForAccounts,
   challengeFinishForLevel,
@@ -202,6 +203,14 @@ test("friends are unique and cannot be self", () => {
   assert.deepEqual(added.account.friends, ["def"]);
   assert.equal(addFriend(added.account, "def").ok, false);
   assert.equal(addFriend(added.account, "abc").ok, false);
+});
+
+test("house friends can enter without approval from either friend direction", () => {
+  const visitor = createAccount("abc", { friends: ["def"] });
+  const owner = createAccount("def");
+  assert.equal(areHouseFriends(visitor, owner), true);
+  assert.equal(areHouseFriends(createAccount("abc"), createAccount("def", { friends: ["abc"] })), true);
+  assert.equal(areHouseFriends(createAccount("abc"), createAccount("def")), false);
 });
 
 test("coin gifts deduct sender coins and wait in the friend's inbox", () => {

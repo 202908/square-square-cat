@@ -651,6 +651,15 @@ export function addFriend(account, friendCode) {
   return { ok: true, account: nextAccount, message: "好友已加入。" };
 }
 
+export function areHouseFriends(visitorAccount, ownerAccount) {
+  if (!visitorAccount || !ownerAccount) return false;
+  return Boolean(
+    visitorAccount.code === ownerAccount.code
+    || (visitorAccount.friends || []).includes(ownerAccount.code)
+    || (ownerAccount.friends || []).includes(visitorAccount.code)
+  );
+}
+
 export function sendCoinGift(sender, recipient, rawAmount, giftDetails = {}) {
   const amount = Math.floor(Number(rawAmount));
   if (!Number.isFinite(amount) || amount <= 0) {

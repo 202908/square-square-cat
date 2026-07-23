@@ -327,6 +327,7 @@ function handleServerMessage(message) {
   if (message.type === "notice") showNotice(message.message);
   if (message.type === "flightInvite") showFlightInvite(message);
   if (message.type === "ferrisCenterInvite") showFerrisCenterInvite(message);
+  if (message.type === "houseVisitRequest") showHouseVisitRequest(message);
 }
 
 function showAuthError(message) {
@@ -818,8 +819,7 @@ function updateActionButtons(me, houses, bushes = [], hazards = []) {
     return Math.hypot(player.x - me.x, player.z - me.z) < 4.5;
   });
   const nearMonster = false;
-  const ownHouse = houses.find((house) => house.owner === state.account?.code);
-  const nearHouse = ownHouse && Math.hypot(ownHouse.x - me.x, ownHouse.z - me.z) < 6;
+  const nearHouse = houses.some((house) => Math.hypot(house.x - me.x, house.z - me.z) < 6);
   const nearSwing = Math.hypot(12 - me.x, -28 - me.z) < 7;
   const ferris = state.ferris;
   const nearFerris = me.location === "island" && ferris && Math.hypot(ferris.x - me.x, ferris.z - me.z) < 13;
@@ -3242,6 +3242,21 @@ function showFerrisCenterInvite(message) {
   `;
   item.querySelector("button").addEventListener("click", () => {
     send("acceptFerrisCenterInvite", { leaderId: message.leaderId });
+    item.remove();
+  });
+  els.chatLog.append(item);
+  els.chatLog.scrollTop = els.chatLog.scrollHeight;
+}
+
+function showHouseVisitRequest(message) {
+  const item = document.createElement("div");
+  item.className = "invite-message";
+  item.innerHTML = `
+    <span><strong>${escapeHtml(message.requesterName || message.requesterCode)}</strong> 問：我可不可以進去你的房子？</span>
+    <button type="button" class="primary-button">同意</button>
+  `;
+  item.querySelector("button").addEventListener("click", () => {
+    send("acceptHouseVisit", { requesterId: message.requesterId });
     item.remove();
   });
   els.chatLog.append(item);

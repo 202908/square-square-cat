@@ -22,6 +22,7 @@ import {
   WEATHER_MODES,
   addFriend,
   applyHousePaint,
+  areHouseFriends,
   buyItem,
   canFly,
   challengeFinishForLevel,
@@ -95,6 +96,7 @@ const RIVER = { z: 8, width: 8, xMin: -92, xMax: 92 };
 const sessions = new Map();
 const sockets = new Map();
 const teams = new Map();
+const houseVisitRequests = new Map();
 let accounts = {};
 let coinCodes = structuredClone(DEFAULT_COIN_CODES);
 let titleCatalog = structuredClone(DEFAULT_TITLES);
@@ -134,6 +136,7 @@ function handleConnection(socket) {
     if (id && sessions.has(id)) {
       detachFromStack(sessions.get(id).player);
       FERRIS.platformGuests = FERRIS.platformGuests.filter((guestId) => guestId !== id);
+      clearHouseVisitRequestsFor(id);
       sessions.delete(id);
       broadcast("notice", { message: "一隻方塊貓離開了星球。" });
     }
@@ -350,6 +353,9 @@ function handleMessage(socket, message) {
       break;
     case "enterHouse":
       handleEnterHouse(socket, session);
+      break;
+    case "acceptHouseVisit":
+      handleAcceptHouseVisit(socket, session, message.requesterId);
       break;
     case "leaveHouse":
       handleLeaveHouse(socket, session);
@@ -595,7 +601,7 @@ function tickWorld() {
       title: titleCatalog[session.account.equipped?.title] || DEFAULT_TITLES[DEFAULT_TITLE_ID],
       catVariant: session.account.catVariant,
       equipped: session.account.equipped,
-      roomItems: session.player.location === "room" ? session.account.roomItems : [],
+      roomItems: session.player.location === "room" ? (accountForRoom(session)?.roomItems || []) : [],
       teamId: session.player.teamId,
       challengeLevel: session.player.challengeLevel,
       teammates: teammateNamesFor(session),
@@ -830,7 +836,8 @@ function updateRoomPlayer(session, dt) {
 
 function roomFloorHeightAt(session, player) {
   let floorY = 1;
-  for (const item of session.account.roomItems || []) {
+  const roomAccount = accountForRoom(session);
+  for (const item of roomAccount?.roomItems || []) {
     for (const platform of roomFurniturePlatforms(item.itemId)) {
       if (!isInsideFurniturePlatform(player, item, platform)) continue;
       if (platform.y > floorY && player.y >= platform.y - 0.6) {
@@ -1010,7 +1017,7 @@ function updateSlidePlayer(session, dt) {
   player.slideProgress = Math.min(1, Number(player.slideProgress || 0) + dt * 0.72);
   const t = easeInOut(player.slideProgress);
   if (player.location === "room" && player.roomSlideItemId) {
-    const item = (session.account.roomItems || []).find((candidate) => candidate.id === player.roomSlideItemId);
+    const item = (accountForRoom(session)?.roomItems || []).find((candidate) => candidate.id === player.roomSlideItemId);
     if (!item) {
       player.slideProgress = null;
       player.roomSlideItemId = null;
@@ -1042,7 +1049,7 @@ function updateSlidePlayer(session, dt) {
 
 function nearestRoomSlideTop(session) {
   const player = session.player;
-  return (session.account.roomItems || []).find((item) => {
+  return (accountForRoom(session)?.roomItems || []).find((item) => {
     if (item.itemId !== "mini-slide-toy") return false;
     const top = roomFurnitureWorldPoint(item, -2.4, 0, 3.25);
     return Math.hypot(player.x - top.x, player.z - top.z) < 3.4 && player.y > 2.6;
@@ -1708,30 +1715,63 @@ function handlePlaceHouse(socket, session) {
 }
 
 function handleEnterHouse(socket, session) {
-  if (!session.account.house) {
-    send(socket, "notice", { message: "你還沒有房子。" });
+  const target = nearestHouseForPlayer(session.player);
+  if (!target) {
+    send(socket, "notice", { message: "請靠近房子門口再進入。" });
     return;
   }
-  const house = session.account.house;
-  const distance = Math.hypot(session.player.x - house.x, session.player.z - house.z);
-  if (distance > 6) {
-    send(socket, "notice", { message: "請靠近自己的房子門口再進入。" });
+  if (target.ownerCode === session.account.code || areHouseFriends(session.account, target.ownerAccount)) {
+    enterRoom(session, target.ownerCode, target.ownerCode === session.account.code ? "你進入了自己的房間。" : `你進入了 ${target.ownerCode} 的房間。`);
     return;
   }
+  const ownerSession = findSessionByAccountCode(target.ownerCode);
+  if (!ownerSession) {
+    send(socket, "notice", { message: "屋主目前不在線上，不能送出進房申請。" });
+    return;
+  }
+  houseVisitRequests.set(session.id, { requesterId: session.id, ownerCode: target.ownerCode, createdAt: Date.now() });
+  addSystemChat(`${displayNameFor(session.account)}：我可不可以進去你的房子？`);
+  send(ownerSession.socket, "houseVisitRequest", {
+    requesterId: session.id,
+    requesterCode: session.account.code,
+    requesterName: displayNameFor(session.account)
+  });
+  send(socket, "notice", { message: `已向 ${target.ownerCode} 送出進房申請。` });
+}
+
+function handleAcceptHouseVisit(socket, session, requesterId) {
+  const request = houseVisitRequests.get(String(requesterId || ""));
+  if (!request || request.ownerCode !== session.account.code) {
+    send(socket, "notice", { message: "這個進房申請已經失效。" });
+    return;
+  }
+  const requester = sessions.get(request.requesterId);
+  if (!requester) {
+    houseVisitRequests.delete(request.requesterId);
+    send(socket, "notice", { message: "申請者已經離線。" });
+    return;
+  }
+  houseVisitRequests.delete(request.requesterId);
+  enterRoom(requester, session.account.code, `${displayNameFor(session.account)} 同意你進入房間。`);
+  send(socket, "notice", { message: `已同意 ${displayNameFor(requester.account)} 進入你的房間。` });
+}
+
+function enterRoom(session, ownerCode, message) {
   session.player.location = "room";
-  session.player.roomOwner = session.account.code;
+  session.player.roomOwner = ownerCode;
   session.player.x = ROOM_CENTER.x;
   session.player.y = 1;
   session.player.z = ROOM_CENTER.z + 8;
   session.player.vx = 0;
   session.player.vy = 0;
   session.player.vz = 0;
-  send(socket, "notice", { message: "你進入了自己的房間。" });
+  send(session.socket, "notice", { message });
 }
 
 function handleLeaveHouse(socket, session) {
   if (session.player.location !== "room") return;
-  const house = session.account.house || { x: 0, y: 0, z: 0 };
+  const owner = accountForRoom(session);
+  const house = owner?.house || session.account.house || { x: 0, y: 0, z: 0 };
   session.player.location = "island";
   session.player.roomOwner = null;
   session.player.x = house.x + 3;
@@ -1748,6 +1788,10 @@ function handlePlaceFurniture(socket, session, itemId) {
   }
   if (session.player.location !== "room") {
     send(socket, "notice", { message: "要進房間裡才能擺家具。" });
+    return;
+  }
+  if (session.player.roomOwner !== session.account.code) {
+    send(socket, "notice", { message: "只能在自己的房間裡擺家具。" });
     return;
   }
   const placement = roomFurniturePlacement(itemId, session.account.roomItems);
@@ -1768,6 +1812,10 @@ function handleClearHouse(socket, session) {
     send(socket, "notice", { message: "要進房間裡才能清空房子。" });
     return;
   }
+  if (session.player.roomOwner !== session.account.code) {
+    send(socket, "notice", { message: "只能清空自己的房子。" });
+    return;
+  }
   const count = session.account.roomItems.length;
   for (const item of session.account.roomItems) {
     session.account.inventory.push(item.itemId);
@@ -1776,6 +1824,37 @@ function handleClearHouse(socket, session) {
   persistSessionAccount(session);
   send(socket, "account", { account: session.account, shopItems: SHOP_ITEMS, coinCodes: session.account.isHost ? coinCodes : undefined });
   send(socket, "notice", { message: count ? `已清空房子，${count} 個家具回到背包。` : "房子裡沒有家具。" });
+}
+
+function nearestHouseForPlayer(player) {
+  let nearest = null;
+  for (const account of Object.values(accounts)) {
+    if (!account.house) continue;
+    const distance = Math.hypot(player.x - account.house.x, player.z - account.house.z);
+    if (distance <= 6 && (!nearest || distance < nearest.distance)) {
+      nearest = { ownerCode: account.code, ownerAccount: account, house: account.house, distance };
+    }
+  }
+  return nearest;
+}
+
+function accountForRoom(session) {
+  const ownerCode = session.player.roomOwner || session.account.code;
+  return findSessionByAccountCode(ownerCode)?.account || accounts[ownerCode] || session.account;
+}
+
+function findSessionByAccountCode(accountCode) {
+  return [...sessions.values()].find((candidate) => candidate.account.code === accountCode) || null;
+}
+
+function clearHouseVisitRequestsFor(sessionId) {
+  const closingSession = sessions.get(sessionId);
+  const closingCode = closingSession?.account.code;
+  for (const [requesterId, request] of houseVisitRequests) {
+    if (requesterId === sessionId || request.ownerCode === closingCode) {
+      houseVisitRequests.delete(requesterId);
+    }
+  }
 }
 
 function updateAccount(socket, session, result) {
@@ -1978,6 +2057,12 @@ function addChat(session, rawText) {
   if (!text) return;
   incrementAchievement(session, "chatMessages");
   chatLog.push({ sender: session.account.code, text, at: Date.now() });
+  chatLog = chatLog.slice(-30);
+  broadcast("chat", { chatLog });
+}
+
+function addSystemChat(text) {
+  chatLog.push({ sender: "系統", text: String(text || "").slice(0, 160), at: Date.now() });
   chatLog = chatLog.slice(-30);
   broadcast("chat", { chatLog });
 }
