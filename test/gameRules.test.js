@@ -8,6 +8,7 @@ import {
   LEVEL_TASKS,
   MAX_CHALLENGE_STEP_Y,
   MAX_PLAYER_LEVEL,
+  REMOVED_ITEM_IDS,
   ROOM_BOUNDS,
   SHOP_ITEMS,
   WEATHER_MODES,
@@ -29,6 +30,7 @@ import {
   isValidNewAccountCode,
   makeGuestAccount,
   normalizeWeatherMode,
+  roomFurniturePlatforms,
   roomFurniturePlacement,
   redeemCode,
   sendCoinGift,
@@ -100,6 +102,10 @@ test("shop has at least fifty furniture items", () => {
   assert.ok(SHOP_ITEMS.filter((item) => item.type === "furniture").length >= 50);
 });
 
+test("shop does not include removed poop items", () => {
+  assert.equal(SHOP_ITEMS.some((item) => REMOVED_ITEM_IDS.has(item.id) || item.name.includes("便便")), false);
+});
+
 test("room furniture placement uses fixed slots inside the smaller room", () => {
   const placement = roomFurniturePlacement("cozy-cat-bed", []);
   assert.ok(placement.x >= ROOM_BOUNDS.minX && placement.x <= ROOM_BOUNDS.maxX);
@@ -111,6 +117,19 @@ test("room furniture placement avoids overlapping occupied slots", () => {
   const first = roomFurniturePlacement("cozy-cat-bed", []);
   const second = roomFurniturePlacement("cloud-sofa", [{ id: "one", itemId: "cozy-cat-bed", ...first }]);
   assert.notDeepEqual({ x: second.x, z: second.z }, { x: first.x, z: first.z });
+});
+
+test("cat tree and room slide have climbable furniture platforms", () => {
+  assert.equal(roomFurniturePlatforms("cat-tree").length, 3);
+  assert.ok(roomFurniturePlatforms("cat-tree").some((platform) => platform.y > 4));
+  assert.ok(roomFurniturePlatforms("mini-slide-toy").some((platform) => platform.y > 3));
+});
+
+test("cat tree and room slide prefer wall-side placement", () => {
+  const catTree = roomFurniturePlacement("cat-tree", []);
+  const slide = roomFurniturePlacement("mini-slide-toy", [{ id: "tree", itemId: "cat-tree", ...catTree }]);
+  assert.ok(catTree.x < 210);
+  assert.ok(slide.x > 228);
 });
 
 test("shop has at least one hundred visible non-furniture items", () => {

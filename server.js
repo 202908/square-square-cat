@@ -13,6 +13,7 @@ import {
   HOST_PASSWORD,
   LEVEL_REWARDS,
   LEVEL_TASKS,
+  REMOVED_ITEM_IDS,
   ROOM_BOUNDS,
   ROOM_CENTER,
   SHOP_ITEMS,
@@ -38,6 +39,7 @@ import {
   normalizeWeatherMode,
   redeemCode,
   richestDiamondAccountCode,
+  roomFurniturePlatforms,
   roomFurniturePlacement,
   sendCoinGift,
   sendDiamondGift,
@@ -162,6 +164,19 @@ async function loadData() {
       account.equipped ||= { hat: null, clothes: null, tail: null, trail: null };
       account.equipped.trail ??= null;
       account.equipped.pet ??= null;
+      if (Array.isArray(account.inventory)) {
+        const kept = account.inventory.filter((itemId) => !REMOVED_ITEM_IDS.has(itemId));
+        if (kept.length !== account.inventory.length) {
+          account.inventory = kept;
+          changedAccounts = true;
+        }
+      }
+      for (const slot of Object.keys(account.equipped)) {
+        if (REMOVED_ITEM_IDS.has(account.equipped[slot])) {
+          account.equipped[slot] = null;
+          changedAccounts = true;
+        }
+      }
       if (!account.equipped.title) {
         account.equipped.title = account.isHost ? "host-cat" : DEFAULT_TITLE_ID;
         changedAccounts = true;
@@ -193,6 +208,13 @@ async function loadData() {
       }
       account.house ??= null;
       account.roomItems ??= [];
+      if (Array.isArray(account.roomItems)) {
+        const keptRoomItems = account.roomItems.filter((item) => !REMOVED_ITEM_IDS.has(item.itemId));
+        if (keptRoomItems.length !== account.roomItems.length) {
+          account.roomItems = keptRoomItems;
+          changedAccounts = true;
+        }
+      }
       account.giftInbox ??= [];
       account.survivalMode ??= account.isHost ? "host" : null;
       account.hunger ??= 100;
@@ -507,6 +529,7 @@ function enterWorld(socket, account, persistent, options = {}) {
       ride: null,
       ferrisSeat: null,
       slideProgress: null,
+      roomSlideItemId: null,
       teamId: null,
       flightLeader: null,
       challengeLevel: 1
@@ -795,11 +818,36 @@ function updateRoomPlayer(session, dt) {
   player.x = clamp(player.x + player.vx * dt, ROOM_BOUNDS.minX, ROOM_BOUNDS.maxX);
   player.z = clamp(player.z + player.vz * dt, ROOM_BOUNDS.minZ, ROOM_BOUNDS.maxZ);
   player.y += player.vy * dt;
-  if (player.y <= 1) {
-    player.y = 1;
+  const floorY = roomFloorHeightAt(session, player);
+  if (player.y <= floorY) {
+    player.y = floorY;
     player.vy = 0;
     player.onGround = true;
+  } else {
+    player.onGround = false;
   }
+}
+
+function roomFloorHeightAt(session, player) {
+  let floorY = 1;
+  for (const item of session.account.roomItems || []) {
+    for (const platform of roomFurniturePlatforms(item.itemId)) {
+      if (!isInsideFurniturePlatform(player, item, platform)) continue;
+      if (platform.y > floorY && player.y >= platform.y - 0.6) {
+        floorY = platform.y;
+      }
+    }
+  }
+  return floorY;
+}
+
+function isInsideFurniturePlatform(player, item, platform) {
+  const yaw = -(item.yaw || 0);
+  const dx = player.x - item.x;
+  const dz = player.z - item.z;
+  const localX = Math.cos(yaw) * dx - Math.sin(yaw) * dz - Number(platform.offsetX || 0);
+  const localZ = Math.sin(yaw) * dx + Math.cos(yaw) * dz - Number(platform.offsetZ || 0);
+  return Math.abs(localX) <= platform.w / 2 && Math.abs(localZ) <= platform.d / 2;
 }
 
 function handleStack(session) {
@@ -925,6 +973,22 @@ function hitMonster(session, monster) {
 
 function handleSlideDown(socket, session) {
   const player = session.player;
+  if (player.location === "room") {
+    const slideItem = nearestRoomSlideTop(session);
+    if (!slideItem) {
+      send(socket, "notice", { message: "要站到房間溜滑梯上面才能溜下來。" });
+      return;
+    }
+    detachFromStack(player);
+    player.ride = null;
+    player.slideProgress = 0;
+    player.roomSlideItemId = slideItem.id;
+    incrementAchievement(session, "slideRides");
+    player.vx = 0;
+    player.vy = 0;
+    player.vz = 0;
+    return;
+  }
   if (player.location !== "island") return;
   const nearTop = Math.hypot(player.x - SLIDE.topX, player.z - SLIDE.z) < 5.5 && player.y > 4.4;
   if (!nearTop) {
@@ -934,6 +998,7 @@ function handleSlideDown(socket, session) {
   detachFromStack(player);
   player.ride = null;
   player.slideProgress = 0;
+  player.roomSlideItemId = null;
   incrementAchievement(session, "slideRides");
   player.vx = 0;
   player.vy = 0;
@@ -944,19 +1009,53 @@ function updateSlidePlayer(session, dt) {
   const player = session.player;
   player.slideProgress = Math.min(1, Number(player.slideProgress || 0) + dt * 0.72);
   const t = easeInOut(player.slideProgress);
-  player.x = SLIDE.topX + (SLIDE.bottomX - SLIDE.topX) * t;
-  player.y = SLIDE.topY + (SLIDE.bottomY - SLIDE.topY) * t;
-  player.z = SLIDE.z;
-  player.yaw = Math.PI / 2;
+  if (player.location === "room" && player.roomSlideItemId) {
+    const item = (session.account.roomItems || []).find((candidate) => candidate.id === player.roomSlideItemId);
+    if (!item) {
+      player.slideProgress = null;
+      player.roomSlideItemId = null;
+      return;
+    }
+    const top = roomFurnitureWorldPoint(item, -2.4, 0, 3.4);
+    const bottom = roomFurnitureWorldPoint(item, 2.6, 0, 1.1);
+    player.x = top.x + (bottom.x - top.x) * t;
+    player.y = top.y + (bottom.y - top.y) * t;
+    player.z = top.z + (bottom.z - top.z) * t;
+    player.yaw = item.yaw || Math.PI / 2;
+  } else {
+    player.x = SLIDE.topX + (SLIDE.bottomX - SLIDE.topX) * t;
+    player.y = SLIDE.topY + (SLIDE.bottomY - SLIDE.topY) * t;
+    player.z = SLIDE.z;
+    player.yaw = Math.PI / 2;
+  }
   player.vx = 0;
   player.vy = 0;
   player.vz = 0;
   player.onGround = false;
   if (player.slideProgress >= 1) {
     player.slideProgress = null;
-    player.y = islandHeight(player.x, player.z) + 1;
+    player.roomSlideItemId = null;
+    player.y = player.location === "room" ? 1 : islandHeight(player.x, player.z) + 1;
     player.onGround = true;
   }
+}
+
+function nearestRoomSlideTop(session) {
+  const player = session.player;
+  return (session.account.roomItems || []).find((item) => {
+    if (item.itemId !== "mini-slide-toy") return false;
+    const top = roomFurnitureWorldPoint(item, -2.4, 0, 3.25);
+    return Math.hypot(player.x - top.x, player.z - top.z) < 3.4 && player.y > 2.6;
+  }) || null;
+}
+
+function roomFurnitureWorldPoint(item, offsetX, offsetZ, y) {
+  const yaw = item.yaw || 0;
+  return {
+    x: item.x + Math.cos(yaw) * offsetX + Math.sin(yaw) * offsetZ,
+    y,
+    z: item.z - Math.sin(yaw) * offsetX + Math.cos(yaw) * offsetZ
+  };
 }
 
 function easeInOut(value) {

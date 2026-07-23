@@ -27,6 +27,7 @@ export const WEATHER_LABELS = {
   rainbow: "彩虹",
   aurora: "極光"
 };
+export const REMOVED_ITEM_IDS = new Set(["poop-statue", "poop-trail"]);
 export const DEFAULT_TITLE_ID = "rookie-cat";
 export const DEFAULT_TITLES = {
   [DEFAULT_TITLE_ID]: { id: DEFAULT_TITLE_ID, name: "新手貓貓", color: "black" },
@@ -199,7 +200,7 @@ export const FURNITURE_ITEMS = [
   ["fish-cabinet", "小魚櫃", 230],
   ["rainbow-shelf", "彩虹架", 220],
   ["takoyaki-stand", "章魚燒小攤", 260],
-  ["poop-statue", "便便雕像", 75],
+  ["moon-crystal-statue", "月亮水晶擺飾", 160],
   ["peach-beanbag", "水蜜桃懶骨頭", 150],
   ["banana-phone", "香蕉電話", 120],
   ["snow-globe", "星球雪花球", 175],
@@ -221,20 +222,74 @@ export function roomFurniturePlacement(itemId, existingItems = []) {
     { x: 207, z: 10 }, { x: 214, z: 10 }, { x: 221, z: 10 }, { x: 228, z: 10 }, { x: 233, z: 12 }
   ];
   const preferredSlots = furnitureSlotGroup(itemId);
-  const slots = [...preferredSlots, ...baseSlots];
+  const preferred = firstAvailableRoomSlot(preferredSlots, occupied, 0);
+  if (preferred) return preferred;
   let hash = 0;
   for (const char of itemId) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  for (let offset = 0; offset < slots.length; offset += 1) {
-    const slot = slots[(hash + offset) % slots.length];
-    const key = `${Math.round(slot.x * 10) / 10}:${Math.round(slot.z * 10) / 10}`;
-    if (!occupied.has(key)) return { x: slot.x, y: 1, z: slot.z, yaw: slot.yaw || 0 };
-  }
+  const fallback = firstAvailableRoomSlot(baseSlots, occupied, hash);
+  if (fallback) return fallback;
   const row = existingItems.length % 5;
   const col = Math.floor(existingItems.length / 5) % 5;
   return { x: 208 + row * 6, y: 1, z: -12 + col * 6, yaw: 0 };
 }
 
+function firstAvailableRoomSlot(slots, occupied, startOffset) {
+  for (let offset = 0; offset < slots.length; offset += 1) {
+    const slot = slots[(startOffset + offset) % slots.length];
+    const key = `${Math.round(slot.x * 10) / 10}:${Math.round(slot.z * 10) / 10}`;
+    if (!occupied.has(key)) return { x: slot.x, y: 1, z: slot.z, yaw: slot.yaw || 0 };
+  }
+  return null;
+}
+
+export function roomFurniturePlatforms(itemId) {
+  if (itemId === "cat-tree") {
+    return [
+      { offsetX: -1.6, offsetZ: 0.8, w: 2.4, d: 2.2, y: 2.15 },
+      { offsetX: 1.4, offsetZ: -0.9, w: 2.5, d: 2.1, y: 3.35 },
+      { offsetX: 0, offsetZ: 0.2, w: 2.2, d: 2, y: 4.65 }
+    ];
+  }
+  if (itemId === "mini-slide-toy") {
+    return [
+      { offsetX: -2.2, offsetZ: 0, w: 2.8, d: 3.4, y: 3.25 },
+      { offsetX: 1.2, offsetZ: 0, w: 3.6, d: 3.4, y: 1.65 }
+    ];
+  }
+  if (itemId.includes("rug") || itemId.includes("carpet") || itemId.includes("mat")) {
+    return [{ offsetX: 0, offsetZ: 0, w: 5.2, d: 3.6, y: 1.16 }];
+  }
+  if (itemId.includes("bed") || itemId.includes("sofa") || itemId.includes("beanbag")) {
+    return [{ offsetX: 0, offsetZ: 0, w: 5.4, d: 3.5, y: 1.9 }];
+  }
+  if (itemId.includes("table") || itemId.includes("desk") || itemId.includes("stand") || itemId.includes("tea")) {
+    return [{ offsetX: 0, offsetZ: 0, w: 3.8, d: 3.8, y: 2.15 }];
+  }
+  if (itemId.includes("chair") || itemId.includes("stool") || itemId.includes("pillow") || itemId.includes("cushion")) {
+    return [{ offsetX: 0, offsetZ: 0, w: 3, d: 3, y: 1.95 }];
+  }
+  if (itemId.includes("shelf") || itemId.includes("cabinet") || itemId.includes("drawer") || itemId.includes("wardrobe") || itemId.includes("fridge")) {
+    return [{ offsetX: 0, offsetZ: 0, w: 2.8, d: 1.8, y: 4.9 }];
+  }
+  if (itemId.includes("piano") || itemId.includes("kitchen") || itemId.includes("bathtub")) {
+    return [{ offsetX: 0, offsetZ: 0, w: 4.6, d: 2.8, y: 3.35 }];
+  }
+  if (itemId.includes("lamp") || itemId.includes("lantern") || itemId.includes("light") || itemId.includes("plant") || itemId.includes("fishbowl") || itemId.includes("snow")) {
+    return [{ offsetX: 0, offsetZ: 0, w: 2.4, d: 2.4, y: 2.45 }];
+  }
+  if (itemId.includes("poster") || itemId.includes("window") || itemId.includes("curtain") || itemId.includes("garland") || itemId.includes("tv") || itemId.includes("mirror") || itemId.includes("clock")) {
+    return [{ offsetX: 0, offsetZ: 0, w: 3.8, d: 0.7, y: 3.2 }];
+  }
+  return [{ offsetX: 0, offsetZ: 0, w: 2.6, d: 2.6, y: 2.25 }];
+}
+
 function furnitureSlotGroup(itemId) {
+  if (itemId === "mini-slide-toy") {
+    return [{ x: 232, z: 8, yaw: -Math.PI / 2 }, { x: 232, z: -5, yaw: -Math.PI / 2 }];
+  }
+  if (itemId === "cat-tree") {
+    return [{ x: 207, z: 7, yaw: Math.PI / 2 }, { x: 207, z: -5, yaw: Math.PI / 2 }];
+  }
   if (itemId.includes("bed") || itemId.includes("sofa") || itemId.includes("beanbag")) {
     return [{ x: 211, z: -13, yaw: 0 }, { x: 229, z: -13, yaw: 0 }, { x: 211, z: 12, yaw: Math.PI }];
   }
@@ -303,7 +358,7 @@ export const SHOP_ITEMS = [
   { id: "star-trail", name: "星星拖尾", slot: "trail", type: "trail", price: 300 },
   { id: "bubble-trail", name: "泡泡拖尾", slot: "trail", type: "trail", price: 220 },
   { id: "pudding-trail", name: "布丁拖尾", slot: "trail", type: "trail", price: 280 },
-  { id: "poop-trail", name: "便便拖尾", slot: "trail", type: "trail", price: 180 },
+  { id: "moonlight-trail", name: "月光拖尾", slot: "trail", type: "trail", price: 300 },
   { id: "takoyaki-trail", name: "章魚燒拖尾", slot: "trail", type: "trail", price: 320 },
   { id: "cat-house", name: "小貓房子", type: "house", price: 1000 },
   ...HOUSE_PAINT_ITEMS,

@@ -825,7 +825,8 @@ function updateActionButtons(me, houses, bushes = [], hazards = []) {
   const nearFerris = me.location === "island" && ferris && Math.hypot(ferris.x - me.x, ferris.z - me.z) < 13;
   const controlsFerris = state.account?.code && ferris?.richestCode === state.account.code;
   const canUseFerrisCenter = controlsFerris || me.ride === "ferrisCenter" || ferris?.platformGuests?.includes(state.myId);
-  const nearSlideTop = me.location === "island" && Math.hypot(me.x + 28, me.z + 20) < 5.5 && me.y > 4.6;
+  const nearSlideTop = (me.location === "island" && Math.hypot(me.x + 28, me.z + 20) < 5.5 && me.y > 4.6)
+    || (me.location === "room" && Boolean(nearestRoomSlideTop(me)));
   const nearBush = Boolean(nearestBush(me, bushes));
   const canUseStack = nearPlayer || Boolean(me.carrying) || Boolean(me.carriedBy);
 
@@ -1319,6 +1320,12 @@ function createFurnitureMesh(itemId) {
     emissiveIntensity: palette.glow ? 0.22 : 0
   });
 
+  if (itemId === "cat-tree") {
+    return makeCatTreeFurniture(material);
+  }
+  if (itemId === "mini-slide-toy") {
+    return makeRoomSlideFurniture(material);
+  }
   if (itemId.includes("bed") || itemId.includes("sofa") || itemId.includes("beanbag")) {
     return new THREE.Mesh(new THREE.BoxGeometry(5.2, 1.2, 3.3), material);
   }
@@ -1355,6 +1362,70 @@ function createFurnitureMesh(itemId) {
     return new THREE.Mesh(new THREE.SphereGeometry(1.3, 20, 14), material);
   }
   return new THREE.Mesh(new THREE.SphereGeometry(1.1, 16, 12), material);
+}
+
+function nearestRoomSlideTop(me) {
+  return (me.roomItems || []).find((item) => {
+    if (item.itemId !== "mini-slide-toy") return false;
+    const top = roomFurnitureWorldPoint(item, -2.4, 0, 3.25);
+    return Math.hypot(me.x - top.x, me.z - top.z) < 3.4 && me.y > 2.6;
+  }) || null;
+}
+
+function roomFurnitureWorldPoint(item, offsetX, offsetZ, y) {
+  const yaw = item.yaw || 0;
+  return {
+    x: item.x + Math.cos(yaw) * offsetX + Math.sin(yaw) * offsetZ,
+    y,
+    z: item.z - Math.sin(yaw) * offsetX + Math.cos(yaw) * offsetZ
+  };
+}
+
+function makeCatTreeFurniture(material) {
+  const group = new THREE.Group();
+  const postMaterial = new THREE.MeshStandardMaterial({ color: 0xd4a373, roughness: 0.75 });
+  for (const [x, z, h] of [[-1.6, 0.8, 2.1], [1.4, -0.9, 3.3], [0, 0.2, 4.5]]) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, h, 12), postMaterial);
+    post.position.set(x, h / 2, z);
+    group.add(post);
+  }
+  [
+    [-1.6, 2.15, 0.8, 2.4, 2.2],
+    [1.4, 3.35, -0.9, 2.5, 2.1],
+    [0, 4.65, 0.2, 2.2, 2]
+  ].forEach(([x, y, z, w, d]) => {
+    const platform = new THREE.Mesh(new THREE.BoxGeometry(w, 0.28, d), material);
+    platform.position.set(x, y - 0.14, z);
+    group.add(platform);
+  });
+  const wallMount = new THREE.Mesh(new THREE.BoxGeometry(0.35, 4.7, 4.4), postMaterial);
+  wallMount.position.set(-2.7, 2.35, 0);
+  group.add(wallMount);
+  return group;
+}
+
+function makeRoomSlideFurniture(material) {
+  const group = new THREE.Group();
+  const railMaterial = new THREE.MeshStandardMaterial({ color: 0xbfe8ff, roughness: 0.56 });
+  const platform = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.35, 3.4), material);
+  platform.position.set(-2.2, 3.08, 0);
+  group.add(platform);
+  const slide = new THREE.Mesh(new THREE.BoxGeometry(5.2, 0.32, 3.2), material);
+  slide.position.set(0.55, 2.2, 0);
+  slide.rotation.z = -0.38;
+  group.add(slide);
+  for (let i = 0; i < 4; i += 1) {
+    const step = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.22, 3.1), railMaterial);
+    step.position.set(-3.6 + i * 0.55, 0.95 + i * 0.48, 0);
+    group.add(step);
+  }
+  for (const z of [-1.75, 1.75]) {
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(5.3, 0.22, 0.16), railMaterial);
+    rail.position.set(0.55, 2.48, z);
+    rail.rotation.z = -0.38;
+    group.add(rail);
+  }
+  return group;
 }
 
 function furniturePalette(itemId) {
@@ -1814,9 +1885,7 @@ function createTrailParticle(trailId, index, ageRatio = 0) {
     depthWrite: false
   });
   let particle;
-  if (trailId === "poop-trail") {
-    particle = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.18, 8), material);
-  } else if (trailId === "takoyaki-trail") {
+  if (trailId === "takoyaki-trail") {
     particle = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 8), material);
   } else if (trailId === "cloud-trail") {
     particle = new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 8), material);
@@ -1838,8 +1907,8 @@ function trailColor(trailId, index) {
     "star-trail": 0xfff1a8,
     "bubble-trail": 0x8ed7ff,
     "pudding-trail": 0xffd48a,
-    "poop-trail": 0x8b5a2b,
-    "takoyaki-trail": 0xd9874a
+    "takoyaki-trail": 0xd9874a,
+    "moonlight-trail": 0xf8fbff
   }[trailId] || rainbow[index % rainbow.length];
 }
 
@@ -2049,7 +2118,29 @@ function drawFlatFurniture(ctx, view, item) {
   ctx.fillStyle = hexColor(palette.color);
   ctx.strokeStyle = "#5b4260";
   ctx.lineWidth = 2;
-  if (item.itemId.includes("rug") || item.itemId.includes("mat") || item.itemId.includes("carpet")) {
+  if (item.itemId === "cat-tree") {
+    ctx.fillStyle = "#d4a373";
+    ctx.fillRect(-27, -50, 7, 54);
+    [[-18, -28], [8, -44], [-4, -64]].forEach(([px, py]) => {
+      ctx.fillStyle = hexColor(palette.color);
+      roundRect(ctx, px - 18, py - 7, 36, 14, 6);
+      ctx.fill();
+      ctx.stroke();
+    });
+  } else if (item.itemId === "mini-slide-toy") {
+    ctx.fillStyle = hexColor(palette.color);
+    roundRect(ctx, -34, -40, 24, 14, 5);
+    ctx.fill();
+    ctx.stroke();
+    ctx.save();
+    ctx.rotate(-0.28);
+    roundRect(ctx, -8, -20, 54, 13, 6);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+    ctx.fillStyle = "#bfe8ff";
+    for (let i = 0; i < 4; i += 1) ctx.fillRect(-42 + i * 8, -20 + i * -5, 14, 4);
+  } else if (item.itemId.includes("rug") || item.itemId.includes("mat") || item.itemId.includes("carpet")) {
     ctx.beginPath();
     ctx.ellipse(0, 0, 24, 13, 0, 0, Math.PI * 2);
     ctx.fill();
