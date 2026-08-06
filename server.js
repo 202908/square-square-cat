@@ -11,6 +11,7 @@ import {
   DEFAULT_TITLES,
   HOST_CODE,
   HOST_DEFAULT_HOUSE,
+  HOST_DEFAULT_ROCKET_PAINT,
   HOST_PASSWORD,
   HOST_ISLAND_CODE,
   ISLAND_CODES,
@@ -262,6 +263,10 @@ async function loadData() {
       }
       if (!account.rocketPaint) {
         account.rocketPaint = "classic";
+        changedAccounts = true;
+      }
+      if (account.isHost && account.rocketPaint === "classic") {
+        account.rocketPaint = HOST_DEFAULT_ROCKET_PAINT;
         changedAccounts = true;
       }
       if (Array.isArray(account.roomItems)) {

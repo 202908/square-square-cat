@@ -1242,26 +1242,43 @@ function updateRocketMeshes(rockets) {
 
 function createRocketMesh(owner) {
   const group = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.75, 2.8, 8, 18), new THREE.MeshStandardMaterial({ color: 0xff4f5f, roughness: 0.48 }));
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.72, 2.4, 8, 24), new THREE.MeshStandardMaterial({ color: 0xff4f5f, roughness: 0.48 }));
   body.name = "body";
-  body.rotation.x = Math.PI / 2;
-  body.position.y = 1.6;
+  body.position.y = 2.1;
   group.add(body);
   const nose = new THREE.Mesh(new THREE.ConeGeometry(0.78, 1.1, 24), new THREE.MeshStandardMaterial({ color: 0x62b7ff, roughness: 0.45 }));
   nose.name = "nose";
-  nose.rotation.x = -Math.PI / 2;
-  nose.position.set(0, 1.6, 1.95);
+  nose.position.set(0, 4.05, 0);
   group.add(nose);
-  const finMaterial = new THREE.MeshStandardMaterial({ color: 0x62b7ff, roughness: 0.52 });
-  [-0.72, 0.72].forEach((x) => {
-    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.8, 0.9), finMaterial);
-    fin.position.set(x, 1.05, -1.2);
+  const finShape = new THREE.Shape();
+  finShape.moveTo(0, 0.68);
+  finShape.lineTo(0.72, -0.5);
+  finShape.lineTo(0, -0.36);
+  finShape.lineTo(0, 0.68);
+  const finGeometry = new THREE.ShapeGeometry(finShape);
+  const finMaterial = new THREE.MeshStandardMaterial({ color: 0x62b7ff, roughness: 0.52, side: THREE.DoubleSide });
+  [
+    { x: -0.66, z: 0, ry: 0 },
+    { x: 0.66, z: 0, ry: Math.PI },
+    { x: 0, z: -0.66, ry: Math.PI / 2 },
+    { x: 0, z: 0.66, ry: -Math.PI / 2 }
+  ].forEach((slot) => {
+    const fin = new THREE.Mesh(finGeometry, finMaterial.clone());
+    fin.name = "fin";
+    fin.position.set(slot.x, 1.05, slot.z);
+    fin.rotation.y = slot.ry;
     group.add(fin);
   });
   const windowMesh = new THREE.Mesh(new THREE.CircleGeometry(0.28, 24), new THREE.MeshBasicMaterial({ color: 0xbfe8ff }));
   windowMesh.name = "window";
-  windowMesh.position.set(0, 1.75, 0.82);
+  windowMesh.position.set(0, 2.55, 0.74);
   group.add(windowMesh);
+  [-0.1, 0.1].forEach((x) => {
+    const eye = new THREE.Mesh(new THREE.CircleGeometry(0.035, 14), new THREE.MeshBasicMaterial({ color: 0x1f2630 }));
+    eye.position.set(x, 2.64, 0.765);
+    eye.name = "rocketEye";
+    group.add(eye);
+  });
   group.userData.owner = owner;
   return group;
 }
@@ -1272,20 +1289,27 @@ function updateRocketPaint(group, paintId, isHost) {
   const nose = group.getObjectByName("nose");
   body.material.color.setHex(look.body);
   nose.material.color.setHex(look.nose);
+  group.children.filter((child) => child.name === "fin").forEach((fin) => {
+    fin.material.color.setHex(look.nose);
+  });
   let earGroup = group.getObjectByName("hostEars");
   if (isHost && !earGroup) {
     earGroup = new THREE.Group();
     earGroup.name = "hostEars";
-    const material = new THREE.MeshStandardMaterial({ color: 0xff8fcb, roughness: 0.5 });
     [-0.36, 0.36].forEach((x) => {
+      const material = new THREE.MeshStandardMaterial({ color: look.body, roughness: 0.5 });
       const ear = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.45, 4), material);
-      ear.position.set(x, 2.24, 1.84);
+      ear.name = "hostRocketEar";
+      ear.position.set(x, 4.72, 0);
       ear.rotation.y = Math.PI / 4;
       earGroup.add(ear);
     });
     group.add(earGroup);
   }
-  if (earGroup) earGroup.visible = isHost;
+  if (earGroup) {
+    earGroup.visible = isHost;
+    earGroup.children.forEach((ear) => ear.material.color.setHex(look.body));
+  }
 }
 
 function rocketPaintLook(paintId) {
@@ -2506,30 +2530,45 @@ function drawFlatRocket(ctx, view, rocket) {
   ctx.save();
   ctx.translate(x, y);
   ctx.fillStyle = hexColor(look.body);
-  ctx.fillRect(-8, -34, 16, 30);
+  ctx.fillRect(-9, -42, 18, 38);
   ctx.fillStyle = hexColor(look.nose);
   ctx.beginPath();
-  ctx.moveTo(-10, -34);
-  ctx.lineTo(0, -52);
-  ctx.lineTo(10, -34);
+  ctx.moveTo(-11, -42);
+  ctx.lineTo(0, -64);
+  ctx.lineTo(11, -42);
   ctx.closePath();
   ctx.fill();
+  [
+    [[-9, -12], [-24, -1], [-9, -2]],
+    [[9, -12], [24, -1], [9, -2]],
+    [[-5, -4], [0, 10], [5, -4]],
+    [[-6, -32], [0, -39], [6, -32]]
+  ].forEach((points) => {
+    ctx.beginPath();
+    ctx.moveTo(points[0][0], points[0][1]);
+    ctx.lineTo(points[1][0], points[1][1]);
+    ctx.lineTo(points[2][0], points[2][1]);
+    ctx.closePath();
+    ctx.fill();
+  });
   ctx.fillStyle = "#bfe8ff";
   ctx.beginPath();
-  ctx.arc(0, -24, 5, 0, Math.PI * 2);
+  ctx.arc(0, -28, 7, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = hexColor(look.nose);
-  ctx.fillRect(-14, -14, 6, 12);
-  ctx.fillRect(8, -14, 6, 12);
+  ctx.fillStyle = "#211a16";
+  ctx.beginPath();
+  ctx.arc(-2.4, -29, 1.4, 0, Math.PI * 2);
+  ctx.arc(2.4, -29, 1.4, 0, Math.PI * 2);
+  ctx.fill();
   if (rocket.isHost) {
-    ctx.fillStyle = "#ff8fcb";
+    ctx.fillStyle = hexColor(look.body);
     ctx.beginPath();
-    ctx.moveTo(-7, -49);
-    ctx.lineTo(-14, -58);
-    ctx.lineTo(-2, -53);
-    ctx.lineTo(7, -49);
-    ctx.lineTo(14, -58);
-    ctx.lineTo(2, -53);
+    ctx.moveTo(-7, -58);
+    ctx.lineTo(-14, -72);
+    ctx.lineTo(-2, -64);
+    ctx.lineTo(7, -58);
+    ctx.lineTo(14, -72);
+    ctx.lineTo(2, -64);
     ctx.fill();
   }
   ctx.restore();

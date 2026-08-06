@@ -5,6 +5,7 @@ import {
   DEFAULT_TITLE_ID,
   DEFAULT_TITLES,
   HOST_DEFAULT_HOUSE,
+  HOST_DEFAULT_ROCKET_PAINT,
   HOST_DEFAULT_ROOM_FURNITURE_IDS,
   HOST_ISLAND_CODE,
   ISLAND_CODES,
@@ -114,6 +115,7 @@ test("host account starts on Inn island with a prepared rainbow house", () => {
   assert.deepEqual(account.house, HOST_DEFAULT_HOUSE);
   assert.equal(account.inventory.includes("cat-house"), true);
   assert.equal(account.inventory.includes("rocket"), true);
+  assert.equal(account.rocketPaint, HOST_DEFAULT_ROCKET_PAINT);
   assert.equal(account.roomItems.length, HOST_DEFAULT_ROOM_FURNITURE_IDS.length);
   assert.equal(canTravelToIsland(account, "Z"), true);
 });

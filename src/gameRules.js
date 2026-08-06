@@ -22,6 +22,7 @@ export const SURVIVAL_DRAIN_PER_SECOND = { hunger: 0.18, thirst: 0.24 };
 export const WEATHER_MODES = ["auto", "rain", "thunder", "rainbow", "aurora"];
 export const ISLAND_CODES = [..."ABCDEFGHIJKLMNOPQRSTUVWXYZ"];
 export const HOST_ISLAND_CODE = "Inn";
+export const HOST_DEFAULT_ROCKET_PAINT = "pink";
 export const HOST_DEFAULT_HOUSE = {
   x: 2,
   y: 1,
@@ -606,7 +607,7 @@ export function createAccount(code, overrides = {}) {
     house: isHost ? structuredClone(HOST_DEFAULT_HOUSE) : null,
     roomItems: isHost ? createHostDefaultRoomItems() : [],
     currentIsland: isHost ? HOST_ISLAND_CODE : "A",
-    rocketPaint: "classic",
+    rocketPaint: isHost ? HOST_DEFAULT_ROCKET_PAINT : "classic",
     giftInbox: [],
     redeemedCodes: [],
     claimedLevelRewards: [],
