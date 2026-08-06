@@ -223,6 +223,29 @@ export const FURNITURE_ITEMS = [
   ["tiny-piano", "小鋼琴", 340]
 ].map(([id, name, price]) => ({ id, name, type: "furniture", price }));
 
+export const HOST_DEFAULT_ROOM_FURNITURE_IDS = [
+  "cloud-bed",
+  "cat-sofa",
+  "cat-tree",
+  "mini-slide-toy",
+  "fish-table",
+  "bubble-chair",
+  "moon-lamp",
+  "star-rug",
+  "rainbow-carpet",
+  "shell-bookshelf",
+  "space-tv",
+  "cloud-kitchen",
+  "tiny-piano",
+  "star-bathtub",
+  "kitty-wardrobe",
+  "fishbowl",
+  "rocket-shelf",
+  "sunny-window",
+  "comet-mirror",
+  "ufo-mobile"
+];
+
 export function roomFurniturePlacement(itemId, existingItems = []) {
   const occupied = new Set(existingItems.map((item) => `${Math.round(item.x * 10) / 10}:${Math.round(item.z * 10) / 10}`));
   const baseSlots = [
@@ -322,6 +345,18 @@ function furnitureSlotGroup(itemId) {
     return [{ x: 220, z: -14, yaw: 0 }, { x: 212, z: -14, yaw: 0 }, { x: 228, z: -14, yaw: 0 }];
   }
   return [{ x: 220, z: 9 }, { x: 211, z: 4 }, { x: 229, z: 4 }];
+}
+
+export function createHostDefaultRoomItems() {
+  const roomItems = [];
+  for (const itemId of HOST_DEFAULT_ROOM_FURNITURE_IDS) {
+    roomItems.push({
+      id: `host-room-${itemId}`,
+      itemId,
+      ...roomFurniturePlacement(itemId, roomItems)
+    });
+  }
+  return roomItems;
 }
 
 export const HOUSE_PAINT_STYLES = [
@@ -569,7 +604,7 @@ export function createAccount(code, overrides = {}) {
     titles: isHost ? [DEFAULT_TITLE_ID, "host-cat"] : [DEFAULT_TITLE_ID],
     achievements: { ...ACHIEVEMENT_DEFAULTS },
     house: isHost ? structuredClone(HOST_DEFAULT_HOUSE) : null,
-    roomItems: [],
+    roomItems: isHost ? createHostDefaultRoomItems() : [],
     currentIsland: isHost ? HOST_ISLAND_CODE : "A",
     rocketPaint: "classic",
     giftInbox: [],

@@ -35,6 +35,7 @@ import {
   claimLevelReward,
   completeChallenge,
   createAccount,
+  createHostDefaultRoomItems,
   damageAdultThirst,
   damageMonster,
   equipItem,
@@ -269,6 +270,10 @@ async function loadData() {
           account.roomItems = keptRoomItems;
           changedAccounts = true;
         }
+      }
+      if (account.isHost && account.roomItems.length < 12) {
+        account.roomItems = createHostDefaultRoomItems();
+        changedAccounts = true;
       }
       account.giftInbox ??= [];
       account.survivalMode ??= account.isHost ? "host" : null;

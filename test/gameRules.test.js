@@ -5,6 +5,7 @@ import {
   DEFAULT_TITLE_ID,
   DEFAULT_TITLES,
   HOST_DEFAULT_HOUSE,
+  HOST_DEFAULT_ROOM_FURNITURE_IDS,
   HOST_ISLAND_CODE,
   ISLAND_CODES,
   LEVEL_REWARDS,
@@ -25,6 +26,7 @@ import {
   claimLevelReward,
   completeChallenge,
   createAccount,
+  createHostDefaultRoomItems,
   damageAdultThirst,
   equipItem,
   getChallengePlatforms,
@@ -112,7 +114,18 @@ test("host account starts on Inn island with a prepared rainbow house", () => {
   assert.deepEqual(account.house, HOST_DEFAULT_HOUSE);
   assert.equal(account.inventory.includes("cat-house"), true);
   assert.equal(account.inventory.includes("rocket"), true);
+  assert.equal(account.roomItems.length, HOST_DEFAULT_ROOM_FURNITURE_IDS.length);
   assert.equal(canTravelToIsland(account, "Z"), true);
+});
+
+test("host default room starts packed with placed furniture", () => {
+  const roomItems = createHostDefaultRoomItems();
+  assert.equal(roomItems.length, HOST_DEFAULT_ROOM_FURNITURE_IDS.length);
+  assert.equal(new Set(roomItems.map((item) => item.id)).size, roomItems.length);
+  assert.ok(roomItems.some((item) => item.itemId === "cat-tree"));
+  assert.ok(roomItems.some((item) => item.itemId === "mini-slide-toy"));
+  assert.ok(roomItems.every((item) => item.x >= ROOM_BOUNDS.minX && item.x <= ROOM_BOUNDS.maxX));
+  assert.ok(roomItems.every((item) => item.z >= ROOM_BOUNDS.minZ && item.z <= ROOM_BOUNDS.maxZ));
 });
 
 test("built-in achievement titles have the requested names and colors", () => {
