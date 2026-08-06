@@ -47,6 +47,7 @@ import {
   normalizeWeatherMode,
   redeemCode,
   richestDiamondAccountCode,
+  rocketParkingSpot,
   roomFurniturePlatforms,
   roomFurniturePlacement,
   sendCoinGift,
@@ -66,6 +67,13 @@ const titlesFile = path.join(dataDir, "titles.json");
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.RENDER ? "0.0.0.0" : "127.0.0.1";
 const TICK_RATE = 30;
+const ROCKET_ROOM_CENTER = { x: 280, z: 0 };
+const ROCKET_ROOM_BOUNDS = {
+  minX: ROCKET_ROOM_CENTER.x - 10,
+  maxX: ROCKET_ROOM_CENTER.x + 10,
+  minZ: ROCKET_ROOM_CENTER.z - 8,
+  maxZ: ROCKET_ROOM_CENTER.z + 8
+};
 const CHALLENGE_PLATFORMS = [
   { x: -52, y: 1.2, z: 36, w: 12, d: 8 },
   { x: -42, y: 4.2, z: 30, w: 9, d: 7 },
@@ -434,6 +442,12 @@ function handleMessage(socket, message) {
     case "placeRocket":
       handlePlaceRocket(socket, session);
       break;
+    case "enterRocket":
+      handleEnterRocket(socket, session);
+      break;
+    case "leaveRocket":
+      handleLeaveRocket(socket, session);
+      break;
     case "travelIsland":
       handleTravelIsland(socket, session, message.island);
       break;
@@ -613,6 +627,7 @@ function enterWorld(socket, account, persistent, options = {}) {
       location: "island",
       island: normalizeIslandCode(account.currentIsland || (account.isHost ? HOST_ISLAND_CODE : "A")),
       roomOwner: null,
+      rocketOwner: null,
       ride: null,
       ferrisSeat: null,
       slideProgress: null,
@@ -683,15 +698,14 @@ function buildStateForSession(viewer, richestCode) {
       owner: account.code,
       ...account.house
     })),
-    rockets: Object.values(accounts).filter((account) => account.house && account.inventory?.includes("rocket") && normalizeIslandCode(account.currentIsland || account.house.island || "A") === island).map((account) => ({
-      owner: account.code,
-      x: account.house.x + 6,
-      y: account.house.y,
-      z: account.house.z + 3,
-      yaw: account.house.yaw || 0,
-      paint: account.rocketPaint || "classic",
-      isHost: account.isHost
-    })),
+    rockets: Object.values(accounts)
+      .filter((account) => account.house && account.inventory?.includes("rocket") && normalizeIslandCode(account.currentIsland || account.house.island || "A") === island)
+      .map((account) => ({
+        owner: account.code,
+        ...rocketParkingSpot(account),
+        paint: account.rocketPaint || "classic",
+        isHost: account.isHost
+      })),
     players: [...sessions.values()].filter((session) => playerVisibleToSession(viewer, session)).map((session) => ({
       ...session.player,
       accountCode: session.account.code,
@@ -706,6 +720,7 @@ function buildStateForSession(viewer, richestCode) {
       catVariant: session.account.catVariant,
       equipped: session.account.equipped,
       roomItems: session.player.location === "room" ? (accountForRoom(session)?.roomItems || []) : [],
+      rocketOwner: session.player.rocketOwner,
       teamId: session.player.teamId,
       challengeLevel: session.player.challengeLevel,
       teammates: teammateNamesFor(session),
@@ -716,6 +731,9 @@ function buildStateForSession(viewer, richestCode) {
 }
 
 function playerVisibleToSession(viewer, candidate) {
+  if (viewer.player.location === "rocket" || candidate.player.location === "rocket") {
+    return viewer.player.location === candidate.player.location && viewer.player.rocketOwner === candidate.player.rocketOwner;
+  }
   if (viewer.player.location === "room" || candidate.player.location === "room") {
     return viewer.player.location === candidate.player.location && viewer.player.roomOwner === candidate.player.roomOwner;
   }
@@ -757,6 +775,10 @@ function updatePlayer(session, dt) {
   }
   if (player.location === "room") {
     updateRoomPlayer(session, dt);
+    return;
+  }
+  if (player.location === "rocket") {
+    updateRocketPlayer(session, dt);
     return;
   }
   if (player.location === "challenge") {
@@ -943,6 +965,32 @@ function updateRoomPlayer(session, dt) {
   player.z = clamp(player.z + player.vz * dt, ROOM_BOUNDS.minZ, ROOM_BOUNDS.maxZ);
   player.y += player.vy * dt;
   const floorY = roomFloorHeightAt(session, player);
+  if (player.y <= floorY) {
+    player.y = floorY;
+    player.vy = 0;
+    player.onGround = true;
+  } else {
+    player.onGround = false;
+  }
+}
+
+function updateRocketPlayer(session, dt) {
+  const player = session.player;
+  const speed = 5.2;
+  player.vx = session.input.x * speed;
+  player.vz = session.input.z * speed;
+  if (Math.abs(player.vx) + Math.abs(player.vz) > 0.1) {
+    player.yaw = Math.atan2(player.vx, player.vz);
+  }
+  player.vy -= 18 * dt;
+  if (session.input.jump && player.onGround) {
+    player.vy = 7.5;
+    player.onGround = false;
+  }
+  player.x = clamp(player.x + player.vx * dt, ROCKET_ROOM_BOUNDS.minX, ROCKET_ROOM_BOUNDS.maxX);
+  player.z = clamp(player.z + player.vz * dt, ROCKET_ROOM_BOUNDS.minZ, ROCKET_ROOM_BOUNDS.maxZ);
+  player.y += player.vy * dt;
+  const floorY = 1;
   if (player.y <= floorY) {
     player.y = floorY;
     player.vy = 0;
@@ -1829,13 +1877,56 @@ function handlePlaceRocket(socket, session) {
     send(socket, "notice", { message: "你還沒有家，所以不能開火箭。" });
     return;
   }
-  send(socket, "notice", { message: "火箭停在你家旁邊，請用上方島嶼選擇器出發。" });
+  send(socket, "notice", { message: "火箭停在你家旁邊，靠近後按進火箭，用控制台選島出發。" });
+}
+
+function handleEnterRocket(socket, session) {
+  if (!session.account.inventory.includes("rocket")) {
+    send(socket, "notice", { message: "你還沒有火箭。" });
+    return;
+  }
+  if (!session.account.house) {
+    send(socket, "notice", { message: "你還沒有家，所以不能進火箭。" });
+    return;
+  }
+  if (session.player.location !== "island") {
+    send(socket, "notice", { message: "要在島上靠近火箭才能進去。" });
+    return;
+  }
+  const spot = rocketParkingSpot(session.account);
+  if (!spot || Math.hypot(session.player.x - spot.x, session.player.z - spot.z) > 7) {
+    send(socket, "notice", { message: "請靠近自己的火箭再進去。" });
+    return;
+  }
+  session.player.location = "rocket";
+  session.player.rocketOwner = session.account.code;
+  session.player.x = ROCKET_ROOM_CENTER.x;
+  session.player.y = 1;
+  session.player.z = ROCKET_ROOM_CENTER.z + 4;
+  session.player.vx = 0;
+  session.player.vy = 0;
+  session.player.vz = 0;
+  send(socket, "notice", { message: "你進入火箭太空艙，控制台可以選擇要去的島。" });
+}
+
+function handleLeaveRocket(socket, session) {
+  if (session.player.location !== "rocket") return;
+  const spot = rocketParkingSpot(session.account) || { x: 0, y: 1, z: 0 };
+  session.player.location = "island";
+  session.player.rocketOwner = null;
+  session.player.x = spot.x + 2.4;
+  session.player.y = spot.y + 1;
+  session.player.z = spot.z + 2.4;
+  session.player.vx = 0;
+  session.player.vy = 0;
+  session.player.vz = 0;
+  send(socket, "notice", { message: "你離開火箭，回到島上。" });
 }
 
 function handleTravelIsland(socket, session, rawIsland, invited = false) {
   const island = normalizeIslandCode(rawIsland);
-  if (session.player.location !== "island") {
-    send(socket, "notice", { message: "要先回到島上，才能換島。" });
+  if (!invited && session.player.location !== "rocket") {
+    send(socket, "notice", { message: "要先進入火箭太空艙，才能選島出發。" });
     return false;
   }
   if (!canTravelToIsland(session.account, island, invited)) {
@@ -1848,10 +1939,13 @@ function handleTravelIsland(socket, session, rawIsland, invited = false) {
   }
   session.player.island = island;
   session.account.currentIsland = island;
+  const spot = rocketParkingSpot(session.account);
   const spawn = randomSpawn();
-  session.player.x = spawn.x;
-  session.player.y = 3;
-  session.player.z = spawn.z;
+  session.player.location = "island";
+  session.player.rocketOwner = null;
+  session.player.x = spot ? spot.x + 2.4 : spawn.x;
+  session.player.y = spot ? spot.y + 1 : 3;
+  session.player.z = spot ? spot.z + 2.4 : spawn.z;
   session.player.vx = 0;
   session.player.vy = 0;
   session.player.vz = 0;

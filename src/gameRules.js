@@ -31,6 +31,7 @@ export const HOST_DEFAULT_HOUSE = {
   island: HOST_ISLAND_CODE,
   paint: { body: "rainbow", roof: "purple" }
 };
+export const ROCKET_PARK_OFFSET = { x: -8, z: 7 };
 export const WEATHER_LABELS = {
   auto: "晴天/日夜",
   rain: "下雨",
@@ -577,6 +578,17 @@ export function canTravelToIsland(account, rawIsland, invited = false) {
   if (account.isHost) return true;
   if (island === HOST_ISLAND_CODE) return Boolean(account.isHost);
   return Boolean(account.inventory?.includes("rocket"));
+}
+
+export function rocketParkingSpot(account) {
+  const house = account?.house;
+  if (!house) return null;
+  return {
+    x: house.x + ROCKET_PARK_OFFSET.x,
+    y: house.y,
+    z: house.z + ROCKET_PARK_OFFSET.z,
+    yaw: house.yaw || 0
+  };
 }
 
 export function normalizeAccountCode(code) {

@@ -87,6 +87,7 @@ const els = {
   stackButton: document.querySelector("#stackButton"),
   attackButton: document.querySelector("#attackButton"),
   enterHouseButton: document.querySelector("#enterHouseButton"),
+  rocketButton: document.querySelector("#rocketButton"),
   clearHouseActionButton: document.querySelector("#clearHouseActionButton"),
   searchBushButton: document.querySelector("#searchBushButton"),
   slideButton: document.querySelector("#slideButton"),
@@ -111,6 +112,7 @@ let flatCtx;
 let island;
 let clock;
 let roomGroup;
+let rocketRoomGroup;
 let swingSeatGroup;
 let ferrisWheelGroup;
 let ferrisCabinGroup;
@@ -131,6 +133,7 @@ const MAX_PLAYER_LEVEL = 100;
 const MAX_CHALLENGE_STEP_Y = 2.8;
 const ROOM_CENTER = { x: 220, z: 0 };
 const ROOM_SIZE = 36;
+const ROCKET_ROOM_CENTER = { x: 280, z: 0 };
 const DAY_CYCLE_SECONDS = 180;
 const WEATHER_EFFECT_LABELS = { auto: "晴天/日夜", rain: "下雨", thunder: "打雷", rainbow: "彩虹", aurora: "極光" };
 const CHALLENGE_STAGE_COLORS = [0xffc5dc, 0xbfe8ff, 0xd9c7ff];
@@ -232,6 +235,10 @@ function bindUi() {
   els.enterHouseButton.addEventListener("click", () => {
     const me = state.players.get(state.myId);
     send(me?.location === "room" ? "leaveHouse" : "enterHouse");
+  });
+  els.rocketButton.addEventListener("click", () => {
+    const me = state.players.get(state.myId);
+    send(me?.location === "rocket" ? "leaveRocket" : "enterRocket");
   });
   els.clearHouseActionButton.addEventListener("click", () => send("clearHouse"));
   els.searchBushButton.addEventListener("click", () => {
@@ -473,6 +480,7 @@ function initThree() {
   createIsland();
   createPlayground();
   createRoom();
+  createRocketRoom();
   createChallengeStage();
   window.addEventListener("resize", resizeRenderer);
   resizeRenderer();
@@ -772,6 +780,66 @@ function createRoom() {
   scene.add(roomGroup);
 }
 
+function createRocketRoom() {
+  rocketRoomGroup = new THREE.Group();
+  const floor = new THREE.Mesh(
+    new THREE.CylinderGeometry(12, 12, 0.7, 40),
+    new THREE.MeshStandardMaterial({ color: 0xdff4ff, roughness: 0.58 })
+  );
+  floor.position.set(ROCKET_ROOM_CENTER.x, 0.35, ROCKET_ROOM_CENTER.z);
+  rocketRoomGroup.add(floor);
+
+  const wallMaterial = new THREE.MeshStandardMaterial({ color: 0xffd7eb, roughness: 0.55, transparent: true, opacity: 0.78, side: THREE.DoubleSide });
+  const wall = new THREE.Mesh(new THREE.CylinderGeometry(12, 12, 9, 40, 1, true), wallMaterial);
+  wall.position.set(ROCKET_ROOM_CENTER.x, 4.8, ROCKET_ROOM_CENTER.z);
+  rocketRoomGroup.add(wall);
+
+  const consoleBase = new THREE.Mesh(
+    new THREE.BoxGeometry(5.4, 1.6, 2.2),
+    new THREE.MeshStandardMaterial({ color: 0x6b8dff, roughness: 0.45 })
+  );
+  consoleBase.position.set(ROCKET_ROOM_CENTER.x, 1.45, ROCKET_ROOM_CENTER.z - 5.4);
+  rocketRoomGroup.add(consoleBase);
+  const consoleTop = new THREE.Mesh(
+    new THREE.BoxGeometry(5.2, 0.18, 2.1),
+    new THREE.MeshBasicMaterial({ color: 0xbfe8ff })
+  );
+  consoleTop.position.set(ROCKET_ROOM_CENTER.x, 2.36, ROCKET_ROOM_CENTER.z - 5.4);
+  consoleTop.rotation.x = -0.26;
+  rocketRoomGroup.add(consoleTop);
+  [-1.7, 0, 1.7].forEach((x, index) => {
+    const button = new THREE.Mesh(
+      new THREE.SphereGeometry(0.22, 16, 10),
+      new THREE.MeshBasicMaterial({ color: [0xff8fcb, 0xffd95a, 0x67d88a][index] })
+    );
+    button.position.set(ROCKET_ROOM_CENTER.x + x, 2.55, ROCKET_ROOM_CENTER.z - 4.85);
+    rocketRoomGroup.add(button);
+  });
+
+  const chair = new THREE.Group();
+  const chairMaterial = new THREE.MeshStandardMaterial({ color: 0x9ee7ff, roughness: 0.52 });
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.45, 2.2), chairMaterial);
+  seat.position.y = 1.25;
+  chair.add(seat);
+  const back = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2.2, 0.45), chairMaterial);
+  back.position.set(0, 2.2, 0.9);
+  chair.add(back);
+  chair.position.set(ROCKET_ROOM_CENTER.x, 0, ROCKET_ROOM_CENTER.z + 3.4);
+  rocketRoomGroup.add(chair);
+
+  const windowMesh = new THREE.Mesh(
+    new THREE.CircleGeometry(2.1, 32),
+    new THREE.MeshBasicMaterial({ color: 0x11295f, transparent: true, opacity: 0.88 })
+  );
+  windowMesh.position.set(ROCKET_ROOM_CENTER.x, 5.2, ROCKET_ROOM_CENTER.z - 11.9);
+  rocketRoomGroup.add(windowMesh);
+
+  const lamp = new THREE.PointLight(0xbfe8ff, 2.4, 48);
+  lamp.position.set(ROCKET_ROOM_CENTER.x, 7, ROCKET_ROOM_CENTER.z);
+  rocketRoomGroup.add(lamp);
+  scene.add(rocketRoomGroup);
+}
+
 function updateWorldState(message) {
   const players = message.players || [];
   const coins = message.coins || [];
@@ -825,10 +893,12 @@ function updateWorldState(message) {
     showAdminModal();
   }
   els.enterHouseButton.textContent = me?.location === "room" ? "離開" : "進入";
+  els.rocketButton.textContent = me?.location === "rocket" ? "離開火箭" : "進火箭";
+  els.islandSelect.classList.toggle("hidden", me?.location !== "rocket");
   els.swingButton.textContent = me?.ride === "swing" ? "下鞦韆" : "上鞦韆";
   updateTeamStatus(me);
   updateSurvivalHud(me);
-  updateActionButtons(me, houses, bushes, message.survivalHazards || []);
+  updateActionButtons(me, houses, rockets, bushes, message.survivalHazards || []);
   updateRoomFurniture(me?.roomItems || []);
 }
 
@@ -842,7 +912,7 @@ function updateSurvivalHud(me) {
   els.survivalHud.classList.add("hidden");
 }
 
-function updateActionButtons(me, houses, bushes = [], hazards = []) {
+function updateActionButtons(me, houses, rockets = [], bushes = [], hazards = []) {
   if (!me) return;
   const nearPlayer = [...state.players.values()].some((player) => {
     if (player.id === state.myId || player.location !== me.location) return false;
@@ -850,6 +920,7 @@ function updateActionButtons(me, houses, bushes = [], hazards = []) {
   });
   const nearMonster = false;
   const nearHouse = houses.some((house) => Math.hypot(house.x - me.x, house.z - me.z) < 6);
+  const nearOwnRocket = rockets.some((rocket) => rocket.owner === state.account?.code && Math.hypot(rocket.x - me.x, rocket.z - me.z) < 7);
   const nearSwing = Math.hypot(12 - me.x, -28 - me.z) < 7;
   const ferris = state.ferris;
   const nearFerris = me.location === "island" && ferris && (is2DMode() ? Math.abs((ferris.x ?? -38) - me.x) < 15 : Math.hypot(ferris.x - me.x, ferris.z - me.z) < 13);
@@ -864,6 +935,7 @@ function updateActionButtons(me, houses, bushes = [], hazards = []) {
   els.stackButton.classList.toggle("hidden", !canUseStack);
   els.attackButton.classList.toggle("hidden", !(nearPlayer || nearMonster));
   els.enterHouseButton.classList.toggle("hidden", !(me.location === "room" || nearHouse));
+  els.rocketButton.classList.toggle("hidden", !(me.location === "rocket" || (me.location === "island" && nearOwnRocket)));
   els.clearHouseActionButton.classList.toggle("hidden", me.location !== "room");
   els.searchBushButton.classList.toggle("hidden", !(me.location === "island" && nearBush));
   els.slideButton.classList.toggle("hidden", !nearSlideTop);
@@ -2163,6 +2235,8 @@ function drawFlatWorld() {
 
   if (me.location === "challenge") {
     drawFlatChallenge(ctx, view, me);
+  } else if (me.location === "rocket") {
+    drawFlatRocketRoom(ctx, view, width, height);
   } else if (me.location === "room") {
     drawFlatRoom(ctx, view, width, height, me);
   } else {
@@ -2327,6 +2401,45 @@ function drawFlatRoom(ctx, view, width, height, me) {
   ctx.lineWidth = 4;
   ctx.strokeRect(view.toX(ROOM_CENTER.x - ROOM_SIZE / 2), view.groundY - 120, ROOM_SIZE * view.scale, 120);
   for (const item of me.roomItems || []) drawFlatFurniture(ctx, view, item);
+}
+
+function drawFlatRocketRoom(ctx, view, width, height) {
+  ctx.fillStyle = "#11295f";
+  ctx.fillRect(0, 0, width, height);
+  const cx = view.toX(ROCKET_ROOM_CENTER.x);
+  const cy = view.groundY - 64;
+  ctx.fillStyle = "#dff4ff";
+  ctx.beginPath();
+  ctx.ellipse(cx, view.groundY, 94, 34, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#ff8fcb";
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 106, Math.PI * 1.08, Math.PI * 1.92);
+  ctx.stroke();
+  ctx.fillStyle = "#6b8dff";
+  roundRect(ctx, cx - 44, view.groundY - 92, 88, 34, 8);
+  ctx.fill();
+  ctx.fillStyle = "#bfe8ff";
+  roundRect(ctx, cx - 36, view.groundY - 102, 72, 16, 8);
+  ctx.fill();
+  ["#ff8fcb", "#ffd95a", "#67d88a"].forEach((color, index) => {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(cx - 22 + index * 22, view.groundY - 93, 4, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.fillStyle = "#9ee7ff";
+  roundRect(ctx, cx - 24, view.groundY - 44, 48, 16, 6);
+  ctx.fill();
+  roundRect(ctx, cx - 22, view.groundY - 74, 44, 34, 8);
+  ctx.fill();
+  ctx.fillStyle = "#1b2d69";
+  ctx.beginPath();
+  ctx.arc(cx, view.groundY - 142, 22, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#dff4ff";
+  ctx.fillText("控制台", cx, view.groundY - 110);
 }
 
 function drawFlatFurniture(ctx, view, item) {

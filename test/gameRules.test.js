@@ -35,6 +35,7 @@ import {
   updateSurvivalStats,
   damageMonster,
   richestDiamondAccountCode,
+  rocketParkingSpot,
   isValidNewAccountCode,
   makeGuestAccount,
   normalizeIslandCode,
@@ -213,6 +214,11 @@ test("rocket needs a house and rocket paint updates the rocket color", () => {
   const painted = useRocketPaint(paint.account, "rocket-paint-pink");
   assert.equal(painted.ok, true);
   assert.equal(painted.account.rocketPaint, "pink");
+});
+
+test("rocket parks away from the host swing side", () => {
+  const account = createAccount("abc", { house: { x: 2, y: 1, z: -28, yaw: 0 } });
+  assert.deepEqual(rocketParkingSpot(account), { x: -6, y: 1, z: -21, yaw: 0 });
 });
 
 test("coin codes can only be redeemed once per account", () => {
