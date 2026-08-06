@@ -15,12 +15,13 @@ const state = {
   titleColors: {},
   titlePlayers: [],
   players: new Map(),
-  flatWorld: { coins: [], houses: [], bushes: [], swing: null, ferris: null },
+  flatWorld: { coins: [], houses: [], bushes: [], swing: null, ferris: null, effects: [] },
   meshes: new Map(),
   coinMeshes: new Map(),
   bushMeshes: new Map(),
   houseMeshes: new Map(),
   furnitureMeshes: new Map(),
+  effectMeshes: new Map(),
   survivalPickupMeshes: new Map(),
   hazardMeshes: new Map(),
   ferris: null,
@@ -756,10 +757,11 @@ function updateWorldState(message) {
   const swing = message.swing;
   const bushes = message.bushes || [];
   const ferris = message.ferris;
+  const effects = message.effects || [];
   const previousWeather = state.weather;
   state.weather = message.weather || state.weather;
   state.ferris = ferris || state.ferris;
-  state.flatWorld = { coins, houses, bushes, swing, ferris: state.ferris };
+  state.flatWorld = { coins, houses, bushes, swing, ferris: state.ferris, effects };
   state.totalAccounts = Number(message.totalAccounts || state.totalAccounts || 0);
   const ids = new Set(players.map((player) => player.id));
   for (const [id, mesh] of state.meshes) {
@@ -787,6 +789,7 @@ function updateWorldState(message) {
   updateHouseMeshes(houses);
   updateSwingMesh(swing);
   updateFerrisMesh(state.ferris);
+  updateEffectMeshes(effects);
   updateChallengeStage(me?.challengeLevel || state.account?.level || 1);
   if (!els.modal.classList.contains("hidden") && els.modalTitle.textContent === "在線玩家") {
     showOnlinePlayersModal();
@@ -822,10 +825,10 @@ function updateActionButtons(me, houses, bushes = [], hazards = []) {
   const nearHouse = houses.some((house) => Math.hypot(house.x - me.x, house.z - me.z) < 6);
   const nearSwing = Math.hypot(12 - me.x, -28 - me.z) < 7;
   const ferris = state.ferris;
-  const nearFerris = me.location === "island" && ferris && Math.hypot(ferris.x - me.x, ferris.z - me.z) < 13;
+  const nearFerris = me.location === "island" && ferris && (is2DMode() ? Math.abs((ferris.x ?? -38) - me.x) < 15 : Math.hypot(ferris.x - me.x, ferris.z - me.z) < 13);
   const controlsFerris = state.account?.code && ferris?.richestCode === state.account.code;
   const canUseFerrisCenter = controlsFerris || me.ride === "ferrisCenter" || ferris?.platformGuests?.includes(state.myId);
-  const nearSlideTop = (me.location === "island" && Math.hypot(me.x + 28, me.z + 20) < 5.5 && me.y > 4.6)
+  const nearSlideTop = (me.location === "island" && (is2DMode() ? Math.abs(me.x + 28) < 6.5 : Math.hypot(me.x + 28, me.z + 20) < 5.5) && me.y > 4.6)
     || (me.location === "room" && Boolean(nearestRoomSlideTop(me)));
   const nearBush = Boolean(nearestBush(me, bushes));
   const canUseStack = nearPlayer || Boolean(me.carrying) || Boolean(me.carriedBy);
@@ -1311,6 +1314,87 @@ function updateRoomFurniture(items) {
   }
 }
 
+function updateEffectMeshes(effects) {
+  const ids = new Set(effects.map((effect) => effect.id));
+  for (const [id, mesh] of state.effectMeshes) {
+    if (!ids.has(id)) {
+      scene.remove(mesh);
+      state.effectMeshes.delete(id);
+    }
+  }
+  for (const effect of effects) {
+    if (!state.effectMeshes.has(effect.id)) {
+      const mesh = createEffectMesh(effect);
+      state.effectMeshes.set(effect.id, mesh);
+      scene.add(mesh);
+    }
+    updateEffectMesh(state.effectMeshes.get(effect.id), effect);
+  }
+}
+
+function createEffectMesh(effect) {
+  const group = new THREE.Group();
+  group.userData.createdAt = effect.createdAt;
+  const colors = effectColors(effect.kind);
+  for (let i = 0; i < 28; i += 1) {
+    const material = new THREE.MeshBasicMaterial({ color: colors[i % colors.length], transparent: true, opacity: 0.9 });
+    const dot = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 8), material);
+    const angle = (i / 28) * Math.PI * 2;
+    const lift = Math.sin(i * 1.7) * 0.5;
+    dot.userData.velocity = new THREE.Vector3(Math.cos(angle) * (1.5 + (i % 5) * 0.24), 1.1 + lift, Math.sin(angle) * (1.5 + (i % 7) * 0.2));
+    group.add(dot);
+  }
+  if (effect.text) group.add(createTextSprite(effect.text));
+  return group;
+}
+
+function updateEffectMesh(group, effect) {
+  const age = Math.max(0, (Date.now() - Number(effect.createdAt || Date.now())) / 1000);
+  const burstY = Math.min(7, age * 3.2);
+  group.position.set(effect.x, effect.y + burstY, effect.z);
+  const fade = Math.max(0, 1 - Math.max(0, age - 7) / 3);
+  group.children.forEach((child) => {
+    if (child.userData.velocity) {
+      child.position.copy(child.userData.velocity).multiplyScalar(Math.min(age, 2.2));
+      child.material.opacity = 0.82 * fade;
+    } else {
+      child.position.set(0, 1.6, 0);
+      child.material.opacity = fade;
+      child.lookAt(camera.position);
+    }
+  });
+}
+
+function createTextSprite(text) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 128;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "rgba(255,255,255,0.92)";
+  ctx.strokeStyle = "#5b4260";
+  ctx.lineWidth = 8;
+  ctx.font = "700 42px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.strokeText(text, 256, 64);
+  ctx.fillText(text, 256, 64);
+  const texture = new THREE.CanvasTexture(canvas);
+  const material = new THREE.SpriteMaterial({ map: texture, transparent: true });
+  const sprite = new THREE.Sprite(material);
+  sprite.scale.set(8, 2, 1);
+  return sprite;
+}
+
+function effectColors(kind) {
+  return {
+    "heart-firework": [0xff8fcb, 0xff4f5f, 0xffffff],
+    "star-popper": [0xfff1a8, 0xffd95a, 0xffffff],
+    "bubble-fountain": [0x8ed7ff, 0xbfe8ff, 0xffffff],
+    "moon-flower": [0xf8fbff, 0xd9c7ff, 0xfff1a8],
+    "confetti-cannon": [0xff5a6c, 0xffd95a, 0x67d88a, 0x62b7ff, 0xb78cff]
+  }[kind] || [0xff5a6c, 0xffd95a, 0x67d88a, 0x62b7ff, 0xb78cff];
+}
+
 function createFurnitureMesh(itemId) {
   const palette = furniturePalette(itemId);
   const material = new THREE.MeshStandardMaterial({
@@ -1784,29 +1868,23 @@ function updatePetMesh(group, player) {
   if (!petId || player.location === "challenge") return;
   const palette = catPalette(player.catVariant);
   const material = new THREE.MeshStandardMaterial({ color: palette.body, roughness: 0.58 });
-  const faceMaterial = new THREE.MeshBasicMaterial({ color: palette.body });
+  const faceMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  const suitMaterial = new THREE.MeshStandardMaterial({ color: 0x62b7ff, roughness: 0.5 });
   const eyeMaterial = new THREE.MeshBasicMaterial({ color: 0x1f2630 });
   const mouthMaterial = new THREE.MeshBasicMaterial({ color: 0xff6f9f });
   const bob = Math.sin(Date.now() * 0.004) * 0.12;
   const body = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.56, 0.72), material);
   body.position.set(-1.45, 0.42 + bob, -2.05);
   group.add(body);
+  const suit = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.32, 0.76), suitMaterial);
+  suit.position.set(-1.45, 0.34 + bob, -2.02);
+  group.add(suit);
   const head = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.52, 0.48), material);
   head.position.set(-1.45, 0.95 + bob, -1.72);
   group.add(head);
   const face = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.2), faceMaterial);
   face.position.set(-1.45, 0.95 + bob, -1.47);
   group.add(face);
-  if (player.catVariant === "calico") {
-    const patchMaterialA = new THREE.MeshBasicMaterial({ color: 0x2c231f, transparent: true, opacity: 0.92 });
-    const patchMaterialB = new THREE.MeshBasicMaterial({ color: 0xd77a2d, transparent: true, opacity: 0.92 });
-    const patchA = new THREE.Mesh(new THREE.PlaneGeometry(0.12, 0.11), patchMaterialA);
-    patchA.position.set(-1.55, 1.02 + bob, -1.462);
-    group.add(patchA);
-    const patchB = new THREE.Mesh(new THREE.PlaneGeometry(0.12, 0.1), patchMaterialB);
-    patchB.position.set(-1.35, 0.93 + bob, -1.462);
-    group.add(patchB);
-  }
   [-0.09, 0.09].forEach((x) => {
     const eye = new THREE.Mesh(new THREE.CircleGeometry(0.035, 16), eyeMaterial);
     eye.position.set(-1.45 + x, 1 + bob, -1.465);
@@ -1950,6 +2028,9 @@ function drawFlatWorld() {
     drawFlatRoom(ctx, view, width, height, me);
   } else {
     drawFlatIsland(ctx, view, width, height);
+  }
+  for (const effect of state.flatWorld.effects || []) {
+    if (!effect.location || effect.location === me.location) drawFlatEffect(ctx, view, effect);
   }
 
   [...state.players.values()]
@@ -2258,6 +2339,34 @@ function drawFlatFerris(ctx, view, ferris) {
   ctx.fill();
 }
 
+function drawFlatEffect(ctx, view, effect) {
+  const age = Math.max(0, (Date.now() - Number(effect.createdAt || Date.now())) / 1000);
+  const fade = Math.max(0, 1 - Math.max(0, age - 7) / 3);
+  const x = view.toX(effect.x);
+  const y = view.toY(effect.y + Math.min(7, age * 3.2));
+  const colors = effectColors(effect.kind).map(hexColor);
+  ctx.save();
+  ctx.globalAlpha = fade;
+  for (let i = 0; i < 24; i += 1) {
+    const angle = (i / 24) * Math.PI * 2;
+    const radius = Math.min(64, age * 32 + (i % 4) * 3);
+    ctx.fillStyle = colors[i % colors.length];
+    ctx.beginPath();
+    ctx.arc(x + Math.cos(angle) * radius, y + Math.sin(angle) * radius * 0.7, 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  if (effect.text) {
+    ctx.fillStyle = "#ffffff";
+    ctx.strokeStyle = "#5b4260";
+    ctx.lineWidth = 5;
+    ctx.font = "700 20px sans-serif";
+    ctx.textAlign = "center";
+    ctx.strokeText(effect.text, x, y - 54);
+    ctx.fillText(effect.text, x, y - 54);
+  }
+  ctx.restore();
+}
+
 function drawFlatHouse(ctx, view, house) {
   const x = view.toX(house.x);
   const y = view.groundY - 42;
@@ -2354,6 +2463,8 @@ function drawFlatCat(ctx, view, player, isMe) {
 function drawFlatMiniCat(ctx, x, y, palette) {
   ctx.fillStyle = hexColor(palette.body);
   ctx.fillRect(x - 8, y - 14, 16, 16);
+  ctx.fillStyle = "#62b7ff";
+  ctx.fillRect(x - 8, y - 5, 16, 7);
   ctx.fillStyle = hexColor(palette.ear || palette.body);
   ctx.beginPath();
   ctx.moveTo(x - 8, y - 14);
@@ -2362,6 +2473,8 @@ function drawFlatMiniCat(ctx, x, y, palette) {
   ctx.lineTo(x + 4, y - 22);
   ctx.lineTo(x + 8, y - 14);
   ctx.fill();
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(x - 5, y - 12, 10, 8);
   ctx.fillStyle = "#211a16";
   ctx.fillRect(x - 4, y - 8, 2, 2);
   ctx.fillRect(x + 3, y - 8, 2, 2);
@@ -2837,16 +2950,11 @@ function priceText(item) {
 
 function showBagModal() {
   const owned = state.shopItems.filter((item) => state.account.inventory.includes(item.id));
+  const equippedItems = owned.filter((item) => item.slot && state.account.equipped[item.slot] === item.id);
+  const unequippedItems = owned.filter((item) => !(item.slot && state.account.equipped[item.slot] === item.id));
   const ownedTitles = (state.account.titles || []).map((id) => state.titleCatalog[id]).filter(Boolean);
-  const itemHtml = owned.length ? `<div class="list">${owned.map((item) => `
-    <div class="list-item">
-      <div class="split">
-        <strong>${item.name}</strong>
-        <span>${item.slot ? (state.account.equipped[item.slot] === item.id ? "裝備中" : item.slot) : item.type}</span>
-      </div>
-      ${bagActionButton(item)}
-    </div>
-  `).join("")}</div>` : "<p>背包現在沒有商品道具。</p>";
+  const equippedHtml = `<h3>已裝備</h3>${equippedItems.length ? `<div class="list">${equippedItems.map((item) => bagItemHtml(item)).join("")}</div>` : "<p>目前沒有裝備商品。</p>"}`;
+  const itemHtml = `<h3>尚未裝備</h3>${unequippedItems.length ? `<div class="list">${unequippedItems.map((item) => bagItemHtml(item)).join("")}</div>` : "<p>背包現在沒有尚未裝備的商品道具。</p>"}`;
   const titleHtml = `
     <h3>稱號</h3>
     <div class="list">${ownedTitles.map((title) => `
@@ -2859,9 +2967,12 @@ function showBagModal() {
       </div>
     `).join("")}</div>
   `;
-  openModal("背包", `${titleHtml}${itemHtml}`);
+  openModal("背包", `${titleHtml}${equippedHtml}${itemHtml}`);
   document.querySelectorAll("[data-equip]").forEach((button) => {
     button.addEventListener("click", () => send("equip", { itemId: button.dataset.equip }));
+  });
+  document.querySelectorAll("[data-use-consumable]").forEach((button) => {
+    button.addEventListener("click", () => useConsumableFromBag(button.dataset.useConsumable));
   });
   document.querySelectorAll("[data-equip-title]").forEach((button) => {
     button.addEventListener("click", () => send("equipTitle", { titleId: button.dataset.equipTitle }));
@@ -2877,6 +2988,29 @@ function showBagModal() {
   });
 }
 
+function bagItemHtml(item) {
+  return `
+    <div class="list-item">
+      <div class="split">
+        <strong>${escapeHtml(item.name)}</strong>
+        <span>${item.type === "consumable" ? `一次性 x${inventoryCount(item.id)}` : item.slot ? (state.account.equipped[item.slot] === item.id ? "裝備中" : item.slot) : item.type}</span>
+      </div>
+      ${bagActionButton(item)}
+    </div>
+  `;
+}
+
+function inventoryCount(itemId) {
+  return (state.account?.inventory || []).filter((ownedId) => ownedId === itemId).length;
+}
+
+function useConsumableFromBag(itemId) {
+  const item = state.shopItems.find((candidate) => candidate.id === itemId);
+  const text = item?.needsText ? window.prompt("煙火中間要寫什麼字？最多 18 個字。", state.account?.code || "") : "";
+  if (item?.needsText && !String(text || "").trim()) return;
+  send("useConsumable", { itemId, text });
+}
+
 function cssTitleColor(colorId) {
   const value = state.titleColors?.[colorId] || colorId || "#111111";
   return value === "rainbow" || value === "aurora" ? "#62b7ff" : value;
@@ -2886,6 +3020,7 @@ function bagActionButton(item) {
   if (item.type === "house") return `<button data-place-house="${item.id}">蓋在前方</button>`;
   if (item.type === "furniture") return `<button data-place-furniture="${item.id}">擺到房間</button>`;
   if (item.type === "house-paint") return `<button data-use-house-paint="${item.id}">使用噴漆</button>`;
+  if (item.type === "consumable") return `<button data-use-consumable="${item.id}" class="primary-button">使用</button>`;
   return `<button data-equip="${item.id}">${state.account.equipped[item.slot] === item.id ? "卸下" : "裝備"}</button>`;
 }
 

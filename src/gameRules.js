@@ -348,6 +348,15 @@ export const HOUSE_PAINT_ITEMS = HOUSE_PAINT_STYLES.flatMap((paint) => [
   }
 ]);
 
+export const CONSUMABLE_ITEMS = [
+  { id: "word-firework", name: "文字煙火", type: "consumable", effect: "firework", needsText: true, price: 180 },
+  { id: "heart-firework", name: "愛心煙火", type: "consumable", effect: "heart-firework", needsText: true, price: 220 },
+  { id: "star-popper", name: "星星爆竹", type: "consumable", effect: "star-popper", price: 120 },
+  { id: "bubble-fountain", name: "泡泡噴泉", type: "consumable", effect: "bubble-fountain", price: 140 },
+  { id: "moon-flower", name: "月光花", type: "consumable", effect: "moon-flower", price: 160 },
+  { id: "confetti-cannon", name: "彩紙砲", type: "consumable", effect: "confetti-cannon", price: 130 }
+];
+
 export const SHOP_ITEMS = [
   { id: "star-hat", name: "星星帽", slot: "hat", type: "wearable", price: 120 },
   { id: "nebula-scarf", name: "星雲圍巾", slot: "clothes", type: "wearable", price: 220 },
@@ -361,6 +370,7 @@ export const SHOP_ITEMS = [
   { id: "moonlight-trail", name: "月光拖尾", slot: "trail", type: "trail", price: 300 },
   { id: "takoyaki-trail", name: "章魚燒拖尾", slot: "trail", type: "trail", price: 320 },
   { id: "cat-house", name: "小貓房子", type: "house", price: 1000 },
+  ...CONSUMABLE_ITEMS,
   ...HOUSE_PAINT_ITEMS,
   ...EXTRA_NON_FURNITURE_ITEMS,
   ...FURNITURE_ITEMS
@@ -578,7 +588,7 @@ export function buyItem(account, itemId) {
   if (!item) {
     return { ok: false, message: "商城沒有這個商品。" };
   }
-  if (account.inventory.includes(itemId)) {
+  if (item.type !== "consumable" && account.inventory.includes(itemId)) {
     return { ok: false, message: "你已經有這個商品了。" };
   }
   const usesDiamonds = Number(item.diamondPrice || 0) > 0;
@@ -597,6 +607,30 @@ export function buyItem(account, itemId) {
   }
   nextAccount.inventory.push(itemId);
   return { ok: true, account: nextAccount, message: `買到 ${item.name}。` };
+}
+
+export function useConsumable(account, itemId, rawText = "") {
+  const item = SHOP_ITEMS.find((candidate) => candidate.id === itemId);
+  if (!item || item.type !== "consumable") {
+    return { ok: false, message: "找不到這個一次性玩具。" };
+  }
+  const index = account.inventory.indexOf(itemId);
+  if (index === -1) {
+    return { ok: false, message: "你沒有這個一次性玩具。" };
+  }
+  const text = String(rawText || "").trim().slice(0, 18);
+  if (item.needsText && !text) {
+    return { ok: false, message: "請先輸入要顯示的文字。" };
+  }
+  const nextAccount = structuredClone(account);
+  nextAccount.inventory.splice(index, 1);
+  return {
+    ok: true,
+    account: nextAccount,
+    effect: item.effect,
+    text,
+    message: `${item.name}已使用。`
+  };
 }
 
 export function equipItem(account, itemId) {

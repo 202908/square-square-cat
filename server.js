@@ -44,6 +44,7 @@ import {
   roomFurniturePlacement,
   sendCoinGift,
   sendDiamondGift,
+  useConsumable,
   updateSurvivalStats,
   withAchievementDefaults
 } from "./src/gameRules.js";
@@ -101,6 +102,7 @@ let accounts = {};
 let coinCodes = structuredClone(DEFAULT_COIN_CODES);
 let titleCatalog = structuredClone(DEFAULT_TITLES);
 let chatLog = [];
+let activeEffects = [];
 let worldCoins = makeWorldCoins(80);
 let survivalPickups = [];
 let survivalHazards = [];
@@ -366,6 +368,9 @@ function handleMessage(socket, message) {
     case "useHousePaint":
       updateAccount(socket, session, applyHousePaint(session.account, message.itemId));
       break;
+    case "useConsumable":
+      handleUseConsumable(socket, session, message.itemId, message.text);
+      break;
     case "clearHouse":
       handleClearHouse(socket, session);
       break;
@@ -565,6 +570,7 @@ function sanitizeInput(input = {}, hasWings) {
 }
 
 function tickWorld() {
+  activeEffects = activeEffects.filter((effect) => Date.now() < effect.expiresAt);
   updateSwing(1 / TICK_RATE);
   updateFerris(1 / TICK_RATE);
   for (const session of sessions.values()) {
@@ -573,6 +579,7 @@ function tickWorld() {
   const richestCode = richestDiamondAccountCode([...sessions.values()].map((session) => session.account));
   broadcast("state", {
     coins: worldCoins,
+    effects: activeEffects,
     survivalPickups: [],
     survivalHazards: [],
     weather: worldWeather,
@@ -689,7 +696,7 @@ function updatePlayer(session, dt) {
   player.z += player.vz * dt;
   resolveSolidBlocks(player);
 
-  let floorY = floorHeightAt(player.x, player.y, player.z);
+  let floorY = floorHeightAt(player.x, player.y, player.z, Boolean(session.account.prefers2D));
   if (player.location === "island" && isInRiver(player)) {
     floorY -= 0.55;
   }
@@ -997,7 +1004,9 @@ function handleSlideDown(socket, session) {
     return;
   }
   if (player.location !== "island") return;
-  const nearTop = Math.hypot(player.x - SLIDE.topX, player.z - SLIDE.z) < 5.5 && player.y > 4.4;
+  const nearTop = session.account.prefers2D
+    ? Math.abs(player.x - SLIDE.topX) < 6.5 && player.y > 4.4
+    : Math.hypot(player.x - SLIDE.topX, player.z - SLIDE.z) < 5.5 && player.y > 4.4;
   if (!nearTop) {
     send(socket, "notice", { message: "要站到溜滑梯上面才能溜下來。" });
     return;
@@ -1177,8 +1186,10 @@ function bottomFerrisSeatIndex() {
   return best;
 }
 
-function isNearFerris(player) {
-  return player.location === "island" && Math.hypot(player.x - FERRIS.x, player.z - FERRIS.z) < 13;
+function isNearFerris(player, flatMode = false) {
+  return player.location === "island" && (
+    flatMode ? Math.abs(player.x - FERRIS.x) < 15 : Math.hypot(player.x - FERRIS.x, player.z - FERRIS.z) < 13
+  );
 }
 
 function ferrisRichestCode() {
@@ -1190,7 +1201,7 @@ function canControlFerrisCenter(session) {
 }
 
 function handleFerrisRide(socket, session) {
-  if (!isNearFerris(session.player)) {
+  if (!isNearFerris(session.player, Boolean(session.account.prefers2D))) {
     send(socket, "notice", { message: "請靠近摩天輪再進入。" });
     return;
   }
@@ -1228,7 +1239,7 @@ function updateFerrisRider(session) {
 
 function handleFerrisCenterEnter(socket, session) {
   const invited = FERRIS.platformGuests.includes(session.id);
-  if (!isNearFerris(session.player) && !canControlFerrisCenter(session) && !invited) {
+  if (!isNearFerris(session.player, Boolean(session.account.prefers2D)) && !canControlFerrisCenter(session) && !invited) {
     send(socket, "notice", { message: "要靠近摩天輪才能上中心平台。" });
     return;
   }
@@ -1826,6 +1837,31 @@ function handleClearHouse(socket, session) {
   send(socket, "notice", { message: count ? `已清空房子，${count} 個家具回到背包。` : "房子裡沒有家具。" });
 }
 
+function handleUseConsumable(socket, session, itemId, text) {
+  const result = useConsumable(session.account, itemId, text);
+  if (!result.ok) {
+    send(socket, "notice", { message: result.message });
+    return;
+  }
+  session.account = result.account;
+  persistSessionAccount(session);
+  const effect = {
+    id: makeId(),
+    kind: result.effect,
+    text: result.text,
+    owner: session.account.code,
+    x: session.player.x,
+    y: session.player.y + 1.4,
+    z: session.player.z,
+    location: session.player.location,
+    createdAt: Date.now(),
+    expiresAt: Date.now() + 10000
+  };
+  activeEffects.push(effect);
+  send(socket, "account", { account: session.account, shopItems: SHOP_ITEMS, coinCodes: session.account.isHost ? coinCodes : undefined });
+  broadcast("notice", { message: `${displayNameFor(session.account)} 使用了 ${result.text ? `「${result.text}」` : "一次性玩具"}。` });
+}
+
 function nearestHouseForPlayer(player) {
   let nearest = null;
   for (const account of Object.values(accounts)) {
@@ -2073,11 +2109,12 @@ function islandHeight(x, z) {
   return Math.sin(x * 0.08) * 0.8 + Math.cos(z * 0.06) * 0.8;
 }
 
-function floorHeightAt(x, y, z) {
+function floorHeightAt(x, y, z, flatMode = false) {
   let floor = islandHeight(x, z);
-  for (const platform of [...CHALLENGE_PLATFORMS, ...SOLID_FLOORS]) {
+  const platforms = flatMode ? SOLID_FLOORS : [...CHALLENGE_PLATFORMS, ...SOLID_FLOORS];
+  for (const platform of platforms) {
     const withinX = Math.abs(x - platform.x) <= platform.w / 2;
-    const withinZ = Math.abs(z - platform.z) <= platform.d / 2;
+    const withinZ = flatMode ? true : Math.abs(z - platform.z) <= platform.d / 2;
     const top = platform.y + 0.4;
     if (withinX && withinZ && y >= top - 0.8 && top > floor) {
       floor = top;

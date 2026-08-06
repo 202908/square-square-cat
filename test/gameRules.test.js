@@ -35,7 +35,8 @@ import {
   roomFurniturePlacement,
   redeemCode,
   sendCoinGift,
-  sendDiamondGift
+  sendDiamondGift,
+  useConsumable
 } from "../src/gameRules.js";
 
 const TEST_CODE_BOOK = {
@@ -136,7 +137,13 @@ test("cat tree and room slide prefer wall-side placement", () => {
 test("shop has at least one hundred visible non-furniture items", () => {
   const nonFurniture = SHOP_ITEMS.filter((item) => item.type !== "furniture");
   assert.ok(nonFurniture.length >= 100);
-  assert.equal(nonFurniture.every((item) => item.slot || item.type === "house"), true);
+  assert.equal(nonFurniture.every((item) => item.slot || item.type === "house" || item.type === "consumable"), true);
+});
+
+test("shop includes several one-time toys", () => {
+  const consumables = SHOP_ITEMS.filter((item) => item.type === "consumable");
+  assert.ok(consumables.length >= 6);
+  assert.ok(consumables.some((item) => item.id === "word-firework" && item.needsText));
 });
 
 test("shop includes house body and roof paint", () => {
@@ -171,6 +178,18 @@ test("shopping and equipping updates inventory and slot", () => {
   const equipped = equipItem(purchase.account, "star-hat");
   assert.equal(equipped.ok, true);
   assert.equal(equipped.account.equipped.hat, "star-hat");
+});
+
+test("consumables can be bought more than once and used one at a time", () => {
+  const account = createAccount("abc", { coins: 1000, inventory: ["word-firework"] });
+  const bought = buyItem(account, "word-firework");
+  assert.equal(bought.ok, true);
+  assert.equal(bought.account.inventory.filter((item) => item === "word-firework").length, 2);
+  assert.equal(useConsumable(bought.account, "word-firework", "").ok, false);
+  const used = useConsumable(bought.account, "word-firework", "Hello");
+  assert.equal(used.ok, true);
+  assert.equal(used.text, "Hello");
+  assert.equal(used.account.inventory.filter((item) => item === "word-firework").length, 1);
 });
 
 test("some fancy shop items can be bought with diamonds", () => {
