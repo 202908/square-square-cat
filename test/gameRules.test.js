@@ -4,6 +4,7 @@ import {
   CAT_VARIANTS,
   DEFAULT_TITLE_ID,
   DEFAULT_TITLES,
+  HOST_DEFAULT_HOUSE,
   HOST_ISLAND_CODE,
   ISLAND_CODES,
   LEVEL_REWARDS,
@@ -103,6 +104,15 @@ test("islands include A to Z plus the host island", () => {
   assert.equal(normalizeIslandCode("b"), "B");
   assert.equal(normalizeIslandCode("inn"), "Inn");
   assert.equal(normalizeIslandCode("??"), "A");
+});
+
+test("host account starts on Inn island with a prepared rainbow house", () => {
+  const account = createAccount(process.env.HOST_ACCOUNT_CODE || "host");
+  if (!account.isHost) return;
+  assert.deepEqual(account.house, HOST_DEFAULT_HOUSE);
+  assert.equal(account.inventory.includes("cat-house"), true);
+  assert.equal(account.inventory.includes("rocket"), true);
+  assert.equal(canTravelToIsland(account, "Z"), true);
 });
 
 test("built-in achievement titles have the requested names and colors", () => {

@@ -22,6 +22,14 @@ export const SURVIVAL_DRAIN_PER_SECOND = { hunger: 0.18, thirst: 0.24 };
 export const WEATHER_MODES = ["auto", "rain", "thunder", "rainbow", "aurora"];
 export const ISLAND_CODES = [..."ABCDEFGHIJKLMNOPQRSTUVWXYZ"];
 export const HOST_ISLAND_CODE = "Inn";
+export const HOST_DEFAULT_HOUSE = {
+  x: 2,
+  y: 1,
+  z: -28,
+  yaw: 0,
+  island: HOST_ISLAND_CODE,
+  paint: { body: "rainbow", roof: "purple" }
+};
 export const WEATHER_LABELS = {
   auto: "晴天/日夜",
   rain: "下雨",
@@ -549,7 +557,7 @@ export function createAccount(code, overrides = {}) {
     diamonds: isHost ? 999999999 : 0,
     isHost,
     catVariant: isHost ? "host" : pickRandomCatVariant(),
-    inventory: [],
+    inventory: isHost ? ["cat-house", "rocket"] : [],
     equipped: {
       hat: null,
       clothes: null,
@@ -560,7 +568,7 @@ export function createAccount(code, overrides = {}) {
     },
     titles: isHost ? [DEFAULT_TITLE_ID, "host-cat"] : [DEFAULT_TITLE_ID],
     achievements: { ...ACHIEVEMENT_DEFAULTS },
-    house: null,
+    house: isHost ? structuredClone(HOST_DEFAULT_HOUSE) : null,
     roomItems: [],
     currentIsland: isHost ? HOST_ISLAND_CODE : "A",
     rocketPaint: "classic",

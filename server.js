@@ -10,6 +10,7 @@ import {
   DEFAULT_TITLE_ID,
   DEFAULT_TITLES,
   HOST_CODE,
+  HOST_DEFAULT_HOUSE,
   HOST_PASSWORD,
   HOST_ISLAND_CODE,
   ISLAND_CODES,
@@ -218,7 +219,36 @@ async function loadData() {
         account.titles.push("super-cat");
         changedAccounts = true;
       }
+      if (account.isHost && !account.inventory?.includes("cat-house")) {
+        account.inventory ||= [];
+        account.inventory.push("cat-house");
+        changedAccounts = true;
+      }
+      if (account.isHost && !account.inventory.includes("rocket")) {
+        account.inventory.push("rocket");
+        changedAccounts = true;
+      }
       account.house ??= null;
+      if (account.isHost && !account.house) {
+        account.house = structuredClone(HOST_DEFAULT_HOUSE);
+        changedAccounts = true;
+      }
+      if (account.isHost && account.house) {
+        for (const key of ["x", "y", "z", "yaw"]) {
+          if (account.house[key] !== HOST_DEFAULT_HOUSE[key]) {
+            account.house[key] = HOST_DEFAULT_HOUSE[key];
+            changedAccounts = true;
+          }
+        }
+      }
+      if (account.isHost && JSON.stringify(account.house.paint || {}) !== JSON.stringify(HOST_DEFAULT_HOUSE.paint)) {
+        account.house.paint = structuredClone(HOST_DEFAULT_HOUSE.paint);
+        changedAccounts = true;
+      }
+      if (account.isHost && normalizeIslandCode(account.house.island || "") !== HOST_ISLAND_CODE) {
+        account.house.island = HOST_ISLAND_CODE;
+        changedAccounts = true;
+      }
       if (account.house && !account.house.island) {
         account.house.island = "A";
         changedAccounts = true;
@@ -643,7 +673,7 @@ function buildStateForSession(viewer, richestCode) {
       owner: account.code,
       ...account.house
     })),
-    rockets: Object.values(accounts).filter((account) => account.house && account.inventory?.includes("rocket") && normalizeIslandCode(account.house.island || "A") === island).map((account) => ({
+    rockets: Object.values(accounts).filter((account) => account.house && account.inventory?.includes("rocket") && normalizeIslandCode(account.currentIsland || account.house.island || "A") === island).map((account) => ({
       owner: account.code,
       x: account.house.x + 6,
       y: account.house.y,
