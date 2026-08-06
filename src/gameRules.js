@@ -20,6 +20,8 @@ export const ROOM_BOUNDS = {
 };
 export const SURVIVAL_DRAIN_PER_SECOND = { hunger: 0.18, thirst: 0.24 };
 export const WEATHER_MODES = ["auto", "rain", "thunder", "rainbow", "aurora"];
+export const ISLAND_CODES = [..."ABCDEFGHIJKLMNOPQRSTUVWXYZ"];
+export const HOST_ISLAND_CODE = "Inn";
 export const WEATHER_LABELS = {
   auto: "晴天/日夜",
   rain: "下雨",
@@ -348,6 +350,23 @@ export const HOUSE_PAINT_ITEMS = HOUSE_PAINT_STYLES.flatMap((paint) => [
   }
 ]);
 
+export const ROCKET_PAINT_STYLES = [
+  ["pink", "粉色", 0xff8fcb, 120],
+  ["light-blue", "淺藍色", 0x9ee7ff, 120],
+  ["red", "紅色", 0xff4f5f, 100],
+  ["orange", "橘色", 0xff9b3d, 100],
+  ["deep-blue", "深藍色", 0x173d8f, 140],
+  ["rainbow", "彩虹色", 0xffffff, 320]
+].map(([id, name, color, price]) => ({ id, name, color, price }));
+
+export const ROCKET_PAINT_ITEMS = ROCKET_PAINT_STYLES.map((paint) => ({
+  id: `rocket-paint-${paint.id}`,
+  name: `${paint.name}火箭噴漆`,
+  type: "rocket-paint",
+  paint,
+  price: paint.price
+}));
+
 export const CONSUMABLE_ITEMS = [
   { id: "word-firework", name: "文字煙火", type: "consumable", effect: "firework", needsText: true, price: 180 },
   { id: "heart-firework", name: "愛心煙火", type: "consumable", effect: "heart-firework", needsText: true, price: 220 },
@@ -370,6 +389,8 @@ export const SHOP_ITEMS = [
   { id: "moonlight-trail", name: "月光拖尾", slot: "trail", type: "trail", price: 300 },
   { id: "takoyaki-trail", name: "章魚燒拖尾", slot: "trail", type: "trail", price: 320 },
   { id: "cat-house", name: "小貓房子", type: "house", price: 1000 },
+  { id: "rocket", name: "小貓火箭", type: "rocket", price: 500 },
+  ...ROCKET_PAINT_ITEMS,
   ...CONSUMABLE_ITEMS,
   ...HOUSE_PAINT_ITEMS,
   ...EXTRA_NON_FURNITURE_ITEMS,
@@ -498,6 +519,22 @@ export function normalizeWeatherMode(mode) {
   return WEATHER_MODES.includes(value) ? value : "auto";
 }
 
+export function normalizeIslandCode(value) {
+  const code = String(value || "").trim();
+  if (code.toLowerCase() === HOST_ISLAND_CODE.toLowerCase()) return HOST_ISLAND_CODE;
+  const upper = code.toUpperCase();
+  return ISLAND_CODES.includes(upper) ? upper : "A";
+}
+
+export function canTravelToIsland(account, rawIsland, invited = false) {
+  const island = normalizeIslandCode(rawIsland);
+  if (island === normalizeIslandCode(account.currentIsland || "A")) return true;
+  if (invited) return true;
+  if (account.isHost) return true;
+  if (island === HOST_ISLAND_CODE) return Boolean(account.isHost);
+  return Boolean(account.inventory?.includes("rocket"));
+}
+
 export function normalizeAccountCode(code) {
   return String(code || "").trim();
 }
@@ -525,6 +562,8 @@ export function createAccount(code, overrides = {}) {
     achievements: { ...ACHIEVEMENT_DEFAULTS },
     house: null,
     roomItems: [],
+    currentIsland: isHost ? HOST_ISLAND_CODE : "A",
+    rocketPaint: "classic",
     giftInbox: [],
     redeemedCodes: [],
     claimedLevelRewards: [],
@@ -587,6 +626,9 @@ export function buyItem(account, itemId) {
   const item = SHOP_ITEMS.find((candidate) => candidate.id === itemId);
   if (!item) {
     return { ok: false, message: "商城沒有這個商品。" };
+  }
+  if (item.type === "rocket" && !account.house) {
+    return { ok: false, message: "你要先有房子，火箭才有地方停。" };
   }
   if (item.type !== "consumable" && account.inventory.includes(itemId)) {
     return { ok: false, message: "你已經有這個商品了。" };
@@ -666,6 +708,23 @@ export function applyHousePaint(account, itemId) {
   nextAccount.house.paint ||= {};
   nextAccount.house.paint[item.target] = item.paint.id;
   return { ok: true, account: nextAccount, message: `${item.name}已使用。` };
+}
+
+export function useRocketPaint(account, itemId) {
+  const item = SHOP_ITEMS.find((candidate) => candidate.id === itemId);
+  if (!item || item.type !== "rocket-paint") {
+    return { ok: false, message: "找不到這個火箭噴漆。" };
+  }
+  if (!account.inventory.includes("rocket")) {
+    return { ok: false, message: "你要先有火箭，才能幫火箭噴漆。" };
+  }
+  if (!account.inventory.includes(itemId)) {
+    return { ok: false, message: "你還沒有這個火箭噴漆。" };
+  }
+
+  const nextAccount = structuredClone(account);
+  nextAccount.rocketPaint = item.paint.id;
+  return { ok: true, account: nextAccount, message: `火箭已換成${item.paint.name}。` };
 }
 
 export function canFly(account) {

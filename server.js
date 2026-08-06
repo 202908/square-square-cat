@@ -11,6 +11,8 @@ import {
   DEFAULT_TITLES,
   HOST_CODE,
   HOST_PASSWORD,
+  HOST_ISLAND_CODE,
+  ISLAND_CODES,
   LEVEL_REWARDS,
   LEVEL_TASKS,
   REMOVED_ITEM_IDS,
@@ -25,6 +27,7 @@ import {
   areHouseFriends,
   buyItem,
   canFly,
+  canTravelToIsland,
   challengeFinishForLevel,
   challengeLevelForAccounts,
   challengeStartForLevel,
@@ -37,6 +40,7 @@ import {
   getChallengePlatforms,
   isValidNewAccountCode,
   makeGuestAccount,
+  normalizeIslandCode,
   normalizeWeatherMode,
   redeemCode,
   richestDiamondAccountCode,
@@ -44,6 +48,7 @@ import {
   roomFurniturePlacement,
   sendCoinGift,
   sendDiamondGift,
+  useRocketPaint,
   useConsumable,
   updateSurvivalStats,
   withAchievementDefaults
@@ -98,6 +103,7 @@ const sessions = new Map();
 const sockets = new Map();
 const teams = new Map();
 const houseVisitRequests = new Map();
+const islandInvites = new Map();
 let accounts = {};
 let coinCodes = structuredClone(DEFAULT_COIN_CODES);
 let titleCatalog = structuredClone(DEFAULT_TITLES);
@@ -139,6 +145,7 @@ function handleConnection(socket) {
       detachFromStack(sessions.get(id).player);
       FERRIS.platformGuests = FERRIS.platformGuests.filter((guestId) => guestId !== id);
       clearHouseVisitRequestsFor(id);
+      clearIslandInvitesFor(id);
       sessions.delete(id);
       broadcast("notice", { message: "一隻方塊貓離開了星球。" });
     }
@@ -212,7 +219,20 @@ async function loadData() {
         changedAccounts = true;
       }
       account.house ??= null;
+      if (account.house && !account.house.island) {
+        account.house.island = "A";
+        changedAccounts = true;
+      }
       account.roomItems ??= [];
+      const nextIsland = account.isHost ? HOST_ISLAND_CODE : normalizeIslandCode(account.currentIsland || account.house?.island || "A");
+      if (account.currentIsland !== nextIsland) {
+        account.currentIsland = nextIsland;
+        changedAccounts = true;
+      }
+      if (!account.rocketPaint) {
+        account.rocketPaint = "classic";
+        changedAccounts = true;
+      }
       if (Array.isArray(account.roomItems)) {
         const keptRoomItems = account.roomItems.filter((item) => !REMOVED_ITEM_IDS.has(item.itemId));
         if (keptRoomItems.length !== account.roomItems.length) {
@@ -367,6 +387,21 @@ function handleMessage(socket, message) {
       break;
     case "useHousePaint":
       updateAccount(socket, session, applyHousePaint(session.account, message.itemId));
+      break;
+    case "useRocketPaint":
+      updateAccount(socket, session, useRocketPaint(session.account, message.itemId));
+      break;
+    case "placeRocket":
+      handlePlaceRocket(socket, session);
+      break;
+    case "travelIsland":
+      handleTravelIsland(socket, session, message.island);
+      break;
+    case "summonFriend":
+      handleSummonFriend(socket, session, message.friendCode);
+      break;
+    case "acceptIslandInvite":
+      handleAcceptIslandInvite(socket, session, message.inviteId);
       break;
     case "useConsumable":
       handleUseConsumable(socket, session, message.itemId, message.text);
@@ -536,6 +571,7 @@ function enterWorld(socket, account, persistent, options = {}) {
       attackUntil: 0,
       hitUntil: 0,
       location: "island",
+      island: normalizeIslandCode(account.currentIsland || (account.isHost ? HOST_ISLAND_CODE : "A")),
       roomOwner: null,
       ride: null,
       ferrisSeat: null,
@@ -551,6 +587,8 @@ function enterWorld(socket, account, persistent, options = {}) {
     id: sessionId,
     account,
     shopItems: SHOP_ITEMS,
+    islandCodes: ISLAND_CODES,
+    hostIslandCode: HOST_ISLAND_CODE,
     levelRewards: LEVEL_REWARDS,
     coinCodes: account.isHost ? coinCodes : undefined,
     chatLog
@@ -577,25 +615,44 @@ function tickWorld() {
     updatePlayer(session, 1 / TICK_RATE);
   }
   const richestCode = richestDiamondAccountCode([...sessions.values()].map((session) => session.account));
-  broadcast("state", {
+  for (const session of sessions.values()) {
+    send(session.socket, "state", buildStateForSession(session, richestCode));
+  }
+}
+
+function buildStateForSession(viewer, richestCode) {
+  const island = normalizeIslandCode(viewer.player.island || viewer.account.currentIsland || "A");
+  return {
     coins: worldCoins,
-    effects: activeEffects,
+    effects: activeEffects.filter((effect) => effectVisibleToSession(viewer, effect)),
     survivalPickups: [],
     survivalHazards: [],
     weather: worldWeather,
     totalAccounts: Object.keys(accounts).length,
     bushes: worldBushes,
+    island,
+    islandCodes: ISLAND_CODES,
+    hostIslandCode: HOST_ISLAND_CODE,
     swing: SWING,
     ferris: {
       ...FERRIS,
       richestCode,
       platformGuests: FERRIS.platformGuests.filter((id) => sessions.has(id))
     },
-    houses: Object.values(accounts).filter((account) => account.house).map((account) => ({
+    houses: Object.values(accounts).filter((account) => account.house && normalizeIslandCode(account.house.island || "A") === island).map((account) => ({
       owner: account.code,
       ...account.house
     })),
-    players: [...sessions.values()].map((session) => ({
+    rockets: Object.values(accounts).filter((account) => account.house && account.inventory?.includes("rocket") && normalizeIslandCode(account.house.island || "A") === island).map((account) => ({
+      owner: account.code,
+      x: account.house.x + 6,
+      y: account.house.y,
+      z: account.house.z + 3,
+      yaw: account.house.yaw || 0,
+      paint: account.rocketPaint || "classic",
+      isHost: account.isHost
+    })),
+    players: [...sessions.values()].filter((session) => playerVisibleToSession(viewer, session)).map((session) => ({
       ...session.player,
       accountCode: session.account.code,
       displayName: displayNameFor(session.account),
@@ -615,7 +672,21 @@ function tickWorld() {
       coins: session.account.coins,
       diamonds: session.account.diamonds
     }))
-  });
+  };
+}
+
+function playerVisibleToSession(viewer, candidate) {
+  if (viewer.player.location === "room" || candidate.player.location === "room") {
+    return viewer.player.location === candidate.player.location && viewer.player.roomOwner === candidate.player.roomOwner;
+  }
+  return normalizeIslandCode(viewer.player.island || "A") === normalizeIslandCode(candidate.player.island || "A");
+}
+
+function effectVisibleToSession(viewer, effect) {
+  if (viewer.player.location === "room" || effect.location === "room") {
+    return viewer.player.location === effect.location && viewer.player.roomOwner === effect.roomOwner;
+  }
+  return normalizeIslandCode(effect.island || "A") === normalizeIslandCode(viewer.player.island || "A");
 }
 
 function displayNameFor(account) {
@@ -1709,6 +1780,90 @@ function handleBuy(socket, session, itemId) {
   if (result.ok) incrementAchievement(session, "itemsBought");
 }
 
+function handlePlaceRocket(socket, session) {
+  if (!session.account.inventory.includes("rocket")) {
+    send(socket, "notice", { message: "你還沒有火箭。" });
+    return;
+  }
+  if (!session.account.house) {
+    send(socket, "notice", { message: "你還沒有家，所以不能開火箭。" });
+    return;
+  }
+  send(socket, "notice", { message: "火箭停在你家旁邊，請用上方島嶼選擇器出發。" });
+}
+
+function handleTravelIsland(socket, session, rawIsland, invited = false) {
+  const island = normalizeIslandCode(rawIsland);
+  if (session.player.location !== "island") {
+    send(socket, "notice", { message: "要先回到島上，才能換島。" });
+    return false;
+  }
+  if (!canTravelToIsland(session.account, island, invited)) {
+    send(socket, "notice", {
+      message: island === HOST_ISLAND_CODE
+        ? "Inn島只有主機或被主機邀請的人能進去。"
+        : "你需要先有房子和火箭，才能自己去別的島。"
+    });
+    return false;
+  }
+  session.player.island = island;
+  session.account.currentIsland = island;
+  const spawn = randomSpawn();
+  session.player.x = spawn.x;
+  session.player.y = 3;
+  session.player.z = spawn.z;
+  session.player.vx = 0;
+  session.player.vy = 0;
+  session.player.vz = 0;
+  persistSessionAccount(session);
+  sendAccount(socket, session.account);
+  send(socket, "notice", { message: `你抵達 ${islandLabel(island)}。` });
+  return true;
+}
+
+function handleSummonFriend(socket, session, friendCode) {
+  const friend = String(friendCode || "").trim();
+  if (!session.account.friends?.includes(friend)) {
+    send(socket, "notice", { message: "要先加好友，才能召喚對方來你的島。" });
+    return;
+  }
+  const target = findSessionByAccountCode(friend);
+  if (!target) {
+    send(socket, "notice", { message: "這位好友目前不在線上。" });
+    return;
+  }
+  const inviteId = makeId();
+  islandInvites.set(inviteId, {
+    inviteId,
+    fromId: session.id,
+    targetId: target.id,
+    island: session.player.island,
+    createdAt: Date.now()
+  });
+  send(target.socket, "islandInvite", {
+    inviteId,
+    fromId: session.id,
+    fromName: displayNameFor(session.account),
+    island: session.player.island
+  });
+  addSystemChat(`${displayNameFor(session.account)} 邀請 ${displayNameFor(target.account)} 來 ${islandLabel(session.player.island)}。`);
+  send(socket, "notice", { message: `已邀請 ${displayNameFor(target.account)} 來 ${islandLabel(session.player.island)}。` });
+}
+
+function handleAcceptIslandInvite(socket, session, inviteId) {
+  const invite = islandInvites.get(String(inviteId || ""));
+  if (!invite || invite.targetId !== session.id) {
+    send(socket, "notice", { message: "這個島嶼邀請已經失效。" });
+    return;
+  }
+  islandInvites.delete(invite.inviteId);
+  handleTravelIsland(socket, session, invite.island, true);
+}
+
+function islandLabel(island) {
+  return normalizeIslandCode(island) === HOST_ISLAND_CODE ? "Inn島" : `${normalizeIslandCode(island)}島`;
+}
+
 function handlePlaceHouse(socket, session) {
   if (!session.account.inventory.includes("cat-house")) {
     send(socket, "notice", { message: "你還沒有買房子。" });
@@ -1718,7 +1873,8 @@ function handlePlaceHouse(socket, session) {
   const distance = 7;
   const x = clamp(player.x + Math.sin(player.yaw) * distance, -88, 88);
   const z = clamp(player.z + Math.cos(player.yaw) * distance, -88, 88);
-  session.account.house = { x, y: islandHeight(x, z), z, yaw: player.yaw, paint: session.account.house?.paint || {} };
+  session.account.currentIsland = player.island;
+  session.account.house = { x, y: islandHeight(x, z), z, yaw: player.yaw, island: player.island, paint: session.account.house?.paint || {} };
   incrementAchievement(session, "housesPlaced");
   persistSessionAccount(session);
   send(socket, "account", { account: session.account, shopItems: SHOP_ITEMS, coinCodes: session.account.isHost ? coinCodes : undefined });
@@ -1785,9 +1941,12 @@ function handleLeaveHouse(socket, session) {
   const house = owner?.house || session.account.house || { x: 0, y: 0, z: 0 };
   session.player.location = "island";
   session.player.roomOwner = null;
+  session.player.island = normalizeIslandCode(house.island || owner?.currentIsland || session.account.currentIsland || "A");
+  session.account.currentIsland = session.player.island;
   session.player.x = house.x + 3;
   session.player.y = house.y + 1;
   session.player.z = house.z + 3;
+  persistSessionAccount(session);
   send(socket, "notice", { message: "你回到島上。" });
 }
 
@@ -1854,6 +2013,8 @@ function handleUseConsumable(socket, session, itemId, text) {
     y: session.player.y + 1.4,
     z: session.player.z,
     location: session.player.location,
+    roomOwner: session.player.roomOwner,
+    island: session.player.island,
     createdAt: Date.now(),
     expiresAt: Date.now() + 10000
   };
@@ -1866,6 +2027,7 @@ function nearestHouseForPlayer(player) {
   let nearest = null;
   for (const account of Object.values(accounts)) {
     if (!account.house) continue;
+    if (normalizeIslandCode(account.house.island || "A") !== normalizeIslandCode(player.island || "A")) continue;
     const distance = Math.hypot(player.x - account.house.x, player.z - account.house.z);
     if (distance <= 6 && (!nearest || distance < nearest.distance)) {
       nearest = { ownerCode: account.code, ownerAccount: account, house: account.house, distance };
@@ -1893,6 +2055,14 @@ function clearHouseVisitRequestsFor(sessionId) {
   }
 }
 
+function clearIslandInvitesFor(sessionId) {
+  for (const [inviteId, invite] of islandInvites) {
+    if (invite.fromId === sessionId || invite.targetId === sessionId) {
+      islandInvites.delete(inviteId);
+    }
+  }
+}
+
 function updateAccount(socket, session, result) {
   send(socket, "notice", { message: result.message });
   if (!result.ok) return;
@@ -1905,6 +2075,8 @@ function sendAccount(socket, account) {
   send(socket, "account", {
     account,
     shopItems: SHOP_ITEMS,
+    islandCodes: ISLAND_CODES,
+    hostIslandCode: HOST_ISLAND_CODE,
     levelRewards: LEVEL_REWARDS,
     levelTasks: LEVEL_TASKS,
     weather: worldWeather,

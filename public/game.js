@@ -10,16 +10,19 @@ const state = {
   weather: "auto",
   weatherModes: ["auto", "rain", "thunder", "rainbow", "aurora"],
   weatherLabels: { auto: "晴天/日夜", rain: "下雨", thunder: "打雷", rainbow: "彩虹", aurora: "極光" },
+  islandCodes: [..."ABCDEFGHIJKLMNOPQRSTUVWXYZ"],
+  hostIslandCode: "Inn",
   coinCodes: {},
   titleCatalog: {},
   titleColors: {},
   titlePlayers: [],
   players: new Map(),
-  flatWorld: { coins: [], houses: [], bushes: [], swing: null, ferris: null, effects: [] },
+  flatWorld: { coins: [], houses: [], rockets: [], bushes: [], swing: null, ferris: null, effects: [] },
   meshes: new Map(),
   coinMeshes: new Map(),
   bushMeshes: new Map(),
   houseMeshes: new Map(),
+  rocketMeshes: new Map(),
   furnitureMeshes: new Map(),
   effectMeshes: new Map(),
   survivalPickupMeshes: new Map(),
@@ -62,6 +65,7 @@ const els = {
   coinAmount: document.querySelector("#coinAmount"),
   diamondAmount: document.querySelector("#diamondAmount"),
   teamStatus: document.querySelector("#teamStatus"),
+  islandSelect: document.querySelector("#islandSelect"),
   survivalHud: document.querySelector("#survivalHud"),
   hungerText: document.querySelector("#hungerText"),
   thirstText: document.querySelector("#thirstText"),
@@ -265,6 +269,7 @@ function bindUi() {
   els.friendsButton.addEventListener("click", showFriendsModal);
   els.challengeButton.addEventListener("click", showChallengeModal);
   els.inviteFlyButton.addEventListener("click", () => send("flightInvite"));
+  els.islandSelect.addEventListener("change", () => send("travelIsland", { island: els.islandSelect.value }));
   els.onlinePlayersButton.addEventListener("click", showOnlinePlayersModal);
   els.adminButton.addEventListener("click", showAdminModal);
   els.closeModal.addEventListener("click", closeModal);
@@ -329,6 +334,7 @@ function handleServerMessage(message) {
   if (message.type === "flightInvite") showFlightInvite(message);
   if (message.type === "ferrisCenterInvite") showFerrisCenterInvite(message);
   if (message.type === "houseVisitRequest") showHouseVisitRequest(message);
+  if (message.type === "islandInvite") showIslandInvite(message);
 }
 
 function showAuthError(message) {
@@ -395,6 +401,8 @@ function updateAccount(message) {
   state.weather = message.weather || state.weather;
   state.weatherModes = message.weatherModes || state.weatherModes;
   state.weatherLabels = message.weatherLabels || state.weatherLabels;
+  state.islandCodes = message.islandCodes || state.islandCodes;
+  state.hostIslandCode = message.hostIslandCode || state.hostIslandCode;
   state.coinCodes = message.coinCodes || state.coinCodes;
   state.titleCatalog = message.titleCatalog || state.titleCatalog;
   state.titleColors = message.titleColors || state.titleColors;
@@ -403,6 +411,7 @@ function updateAccount(message) {
   els.levelText.textContent = state.account.isHost ? "主機" : `Lv. ${state.account.level}`;
   els.coinAmount.textContent = state.account.isHost ? "金幣 ∞" : `金幣 ${state.account.coins}`;
   els.diamondAmount.textContent = state.account.isHost ? "鑽石 ∞" : `鑽石 ${Number(state.account.diamonds || 0)}`;
+  renderIslandSelect(state.account.currentIsland || "A");
   els.onlinePlayersButton.classList.toggle("hidden", !state.account.isHost);
   els.adminButton.classList.toggle("hidden", !state.account.isHost);
   els.gameScreen.classList.toggle("mode-2d", is2DMode());
@@ -427,6 +436,19 @@ function clientCanFly(account) {
 
 function is2DMode() {
   return Boolean(state.account?.prefers2D);
+}
+
+function renderIslandSelect(currentIsland = "A") {
+  const options = [...(state.islandCodes || []), state.hostIslandCode || "Inn"];
+  const html = options.map((island) => `<option value="${escapeHtml(island)}">${escapeHtml(islandLabel(island))}</option>`).join("");
+  if (els.islandSelect.innerHTML !== html) {
+    els.islandSelect.innerHTML = html;
+  }
+  els.islandSelect.value = currentIsland;
+}
+
+function islandLabel(island) {
+  return island === (state.hostIslandCode || "Inn") ? "Inn島" : `${island}島`;
 }
 
 function initThree() {
@@ -754,15 +776,19 @@ function updateWorldState(message) {
   const players = message.players || [];
   const coins = message.coins || [];
   const houses = message.houses || [];
+  const rockets = message.rockets || [];
   const swing = message.swing;
   const bushes = message.bushes || [];
   const ferris = message.ferris;
   const effects = message.effects || [];
   const previousWeather = state.weather;
   state.weather = message.weather || state.weather;
+  state.islandCodes = message.islandCodes || state.islandCodes;
+  state.hostIslandCode = message.hostIslandCode || state.hostIslandCode;
   state.ferris = ferris || state.ferris;
-  state.flatWorld = { coins, houses, bushes, swing, ferris: state.ferris, effects };
+  state.flatWorld = { coins, houses, rockets, bushes, swing, ferris: state.ferris, effects };
   state.totalAccounts = Number(message.totalAccounts || state.totalAccounts || 0);
+  renderIslandSelect(message.island || state.account?.currentIsland || "A");
   const ids = new Set(players.map((player) => player.id));
   for (const [id, mesh] of state.meshes) {
     if (!ids.has(id)) {
@@ -787,6 +813,7 @@ function updateWorldState(message) {
   updateHazardMeshes(message.survivalHazards || [], me);
   updateBushMeshes(bushes);
   updateHouseMeshes(houses);
+  updateRocketMeshes(rockets);
   updateSwingMesh(swing);
   updateFerrisMesh(state.ferris);
   updateEffectMeshes(effects);
@@ -1190,6 +1217,88 @@ function updateHouseMeshes(houses) {
     mesh.rotation.y = house.yaw || 0;
     updateHousePaint(mesh, house.paint || {});
   }
+}
+
+function updateRocketMeshes(rockets) {
+  const ids = new Set(rockets.map((rocket) => rocket.owner));
+  for (const [id, mesh] of state.rocketMeshes) {
+    if (!ids.has(id)) {
+      scene.remove(mesh);
+      state.rocketMeshes.delete(id);
+    }
+  }
+  for (const rocket of rockets) {
+    if (!state.rocketMeshes.has(rocket.owner)) {
+      const mesh = createRocketMesh(rocket.owner);
+      state.rocketMeshes.set(rocket.owner, mesh);
+      scene.add(mesh);
+    }
+    const mesh = state.rocketMeshes.get(rocket.owner);
+    mesh.position.set(rocket.x, rocket.y + 1.2, rocket.z);
+    mesh.rotation.y = rocket.yaw || 0;
+    updateRocketPaint(mesh, rocket.paint || "classic", Boolean(rocket.isHost));
+  }
+}
+
+function createRocketMesh(owner) {
+  const group = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.75, 2.8, 8, 18), new THREE.MeshStandardMaterial({ color: 0xff4f5f, roughness: 0.48 }));
+  body.name = "body";
+  body.rotation.x = Math.PI / 2;
+  body.position.y = 1.6;
+  group.add(body);
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.78, 1.1, 24), new THREE.MeshStandardMaterial({ color: 0x62b7ff, roughness: 0.45 }));
+  nose.name = "nose";
+  nose.rotation.x = -Math.PI / 2;
+  nose.position.set(0, 1.6, 1.95);
+  group.add(nose);
+  const finMaterial = new THREE.MeshStandardMaterial({ color: 0x62b7ff, roughness: 0.52 });
+  [-0.72, 0.72].forEach((x) => {
+    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.8, 0.9), finMaterial);
+    fin.position.set(x, 1.05, -1.2);
+    group.add(fin);
+  });
+  const windowMesh = new THREE.Mesh(new THREE.CircleGeometry(0.28, 24), new THREE.MeshBasicMaterial({ color: 0xbfe8ff }));
+  windowMesh.name = "window";
+  windowMesh.position.set(0, 1.75, 0.82);
+  group.add(windowMesh);
+  group.userData.owner = owner;
+  return group;
+}
+
+function updateRocketPaint(group, paintId, isHost) {
+  const look = rocketPaintLook(paintId);
+  const body = group.getObjectByName("body");
+  const nose = group.getObjectByName("nose");
+  body.material.color.setHex(look.body);
+  nose.material.color.setHex(look.nose);
+  let earGroup = group.getObjectByName("hostEars");
+  if (isHost && !earGroup) {
+    earGroup = new THREE.Group();
+    earGroup.name = "hostEars";
+    const material = new THREE.MeshStandardMaterial({ color: 0xff8fcb, roughness: 0.5 });
+    [-0.36, 0.36].forEach((x) => {
+      const ear = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.45, 4), material);
+      ear.position.set(x, 2.24, 1.84);
+      ear.rotation.y = Math.PI / 4;
+      earGroup.add(ear);
+    });
+    group.add(earGroup);
+  }
+  if (earGroup) earGroup.visible = isHost;
+}
+
+function rocketPaintLook(paintId) {
+  const looks = {
+    classic: { body: 0xff4f5f, nose: 0x62b7ff },
+    pink: { body: 0xff8fcb, nose: 0x9ee7ff },
+    "light-blue": { body: 0x9ee7ff, nose: 0xff8fcb },
+    red: { body: 0xff4f5f, nose: 0xffd95a },
+    orange: { body: 0xff9b3d, nose: 0x62b7ff },
+    "deep-blue": { body: 0x173d8f, nose: 0xbfe8ff },
+    rainbow: { body: 0xffd95a, nose: 0xb78cff }
+  };
+  return looks[paintId] || looks.classic;
 }
 
 function createHouseMesh(owner) {
@@ -1871,7 +1980,8 @@ function updatePetMesh(group, player) {
   const faceMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
   const suitMaterial = new THREE.MeshStandardMaterial({ color: 0x62b7ff, roughness: 0.5 });
   const eyeMaterial = new THREE.MeshBasicMaterial({ color: 0x1f2630 });
-  const mouthMaterial = new THREE.MeshBasicMaterial({ color: 0xff6f9f });
+  const mouthMaterial = new THREE.MeshBasicMaterial({ color: 0x1f2630 });
+  const noseMaterial = new THREE.MeshBasicMaterial({ color: 0xff8fcb });
   const bob = Math.sin(Date.now() * 0.004) * 0.12;
   const body = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.56, 0.72), material);
   body.position.set(-1.45, 0.42 + bob, -2.05);
@@ -1890,10 +2000,15 @@ function updatePetMesh(group, player) {
     eye.position.set(-1.45 + x, 1 + bob, -1.465);
     group.add(eye);
   });
-  const mouth = new THREE.Mesh(new THREE.TorusGeometry(0.055, 0.01, 8, 18, Math.PI), mouthMaterial);
-  mouth.position.set(-1.45, 0.91 + bob, -1.46);
-  mouth.rotation.z = Math.PI;
-  group.add(mouth);
+  const nose = new THREE.Mesh(new THREE.CircleGeometry(0.025, 12), noseMaterial);
+  nose.position.set(-1.45, 0.935 + bob, -1.462);
+  group.add(nose);
+  [-0.035, 0.035].forEach((x, index) => {
+    const mouth = new THREE.Mesh(new THREE.TorusGeometry(0.038, 0.006, 6, 18, Math.PI), mouthMaterial);
+    mouth.position.set(-1.45 + x, 0.905 + bob, -1.46);
+    mouth.rotation.z = index === 0 ? Math.PI * 1.12 : Math.PI * 0.88;
+    group.add(mouth);
+  });
   [-0.22, 0.22].forEach((x) => {
     const ear = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.26, 4), material);
     ear.position.set(-1.45 + x, 1.32 + bob, -1.75);
@@ -2172,6 +2287,7 @@ function drawFlatIsland(ctx, view, width, height) {
   drawFlatSwing(ctx, view, 12);
   drawFlatFerris(ctx, view, state.flatWorld.ferris || { x: -38, angle: 0 });
   for (const house of state.flatWorld.houses || []) drawFlatHouse(ctx, view, house);
+  for (const rocket of state.flatWorld.rockets || []) drawFlatRocket(ctx, view, rocket);
   for (const bush of state.flatWorld.bushes || []) drawFlatBush(ctx, view, bush);
   for (const coin of state.flatWorld.coins || []) {
     if (!coin.taken) drawFlatCoin(ctx, view, coin);
@@ -2383,6 +2499,42 @@ function drawFlatHouse(ctx, view, house) {
   ctx.fillRect(x - 7, y + 16, 14, 26);
 }
 
+function drawFlatRocket(ctx, view, rocket) {
+  const x = view.toX(rocket.x);
+  const y = view.groundY - 20;
+  const look = rocketPaintLook(rocket.paint || "classic");
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.fillStyle = hexColor(look.body);
+  ctx.fillRect(-8, -34, 16, 30);
+  ctx.fillStyle = hexColor(look.nose);
+  ctx.beginPath();
+  ctx.moveTo(-10, -34);
+  ctx.lineTo(0, -52);
+  ctx.lineTo(10, -34);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "#bfe8ff";
+  ctx.beginPath();
+  ctx.arc(0, -24, 5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = hexColor(look.nose);
+  ctx.fillRect(-14, -14, 6, 12);
+  ctx.fillRect(8, -14, 6, 12);
+  if (rocket.isHost) {
+    ctx.fillStyle = "#ff8fcb";
+    ctx.beginPath();
+    ctx.moveTo(-7, -49);
+    ctx.lineTo(-14, -58);
+    ctx.lineTo(-2, -53);
+    ctx.lineTo(7, -49);
+    ctx.lineTo(14, -58);
+    ctx.lineTo(2, -53);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
 function drawFlatBush(ctx, view, bush) {
   if (bush.searched) return;
   const x = view.toX(bush.x);
@@ -2476,8 +2628,20 @@ function drawFlatMiniCat(ctx, x, y, palette) {
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(x - 5, y - 12, 10, 8);
   ctx.fillStyle = "#211a16";
-  ctx.fillRect(x - 4, y - 8, 2, 2);
-  ctx.fillRect(x + 3, y - 8, 2, 2);
+  ctx.beginPath();
+  ctx.arc(x - 3, y - 8, 1.4, 0, Math.PI * 2);
+  ctx.arc(x + 3, y - 8, 1.4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#ff8fcb";
+  ctx.beginPath();
+  ctx.arc(x, y - 5, 1.2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#211a16";
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.arc(x - 2, y - 4, 2.2, 0.1, Math.PI * 0.85);
+  ctx.arc(x + 2, y - 4, 2.2, Math.PI * 0.15, Math.PI * 0.9);
+  ctx.stroke();
 }
 
 function drawFlatMoon(ctx, x, y, radius, cutoutColor) {
@@ -2986,6 +3150,12 @@ function showBagModal() {
   document.querySelectorAll("[data-use-house-paint]").forEach((button) => {
     button.addEventListener("click", () => send("useHousePaint", { itemId: button.dataset.useHousePaint }));
   });
+  document.querySelectorAll("[data-use-rocket-paint]").forEach((button) => {
+    button.addEventListener("click", () => send("useRocketPaint", { itemId: button.dataset.useRocketPaint }));
+  });
+  document.querySelectorAll("[data-place-rocket]").forEach((button) => {
+    button.addEventListener("click", () => send("placeRocket"));
+  });
 }
 
 function bagItemHtml(item) {
@@ -3018,8 +3188,10 @@ function cssTitleColor(colorId) {
 
 function bagActionButton(item) {
   if (item.type === "house") return `<button data-place-house="${item.id}">蓋在前方</button>`;
+  if (item.type === "rocket") return `<button data-place-rocket="${item.id}">查看火箭</button>`;
   if (item.type === "furniture") return `<button data-place-furniture="${item.id}">擺到房間</button>`;
   if (item.type === "house-paint") return `<button data-use-house-paint="${item.id}">使用噴漆</button>`;
+  if (item.type === "rocket-paint") return `<button data-use-rocket-paint="${item.id}">使用噴漆</button>`;
   if (item.type === "consumable") return `<button data-use-consumable="${item.id}" class="primary-button">使用</button>`;
   return `<button data-equip="${item.id}">${state.account.equipped[item.slot] === item.id ? "卸下" : "裝備"}</button>`;
 }
@@ -3058,7 +3230,10 @@ function showFriendsModal() {
       ${(state.account.friends || []).map((friend) => `
         <div class="list-item">
           <div class="split"><strong>${friend}</strong><button data-team-invite="${escapeHtml(friend)}">組隊</button></div>
-          <button data-gift-friend="${escapeHtml(friend)}">贈送</button>
+          <div class="row">
+            <button data-summon-friend="${escapeHtml(friend)}">召喚</button>
+            <button data-gift-friend="${escapeHtml(friend)}">贈送</button>
+          </div>
         </div>
       `).join("") || "<p>還沒有好友。</p>"}
     </div>
@@ -3073,6 +3248,9 @@ function showFriendsModal() {
   });
   document.querySelectorAll("[data-gift-friend]").forEach((button) => {
     button.addEventListener("click", () => showGiftShop(button.dataset.giftFriend));
+  });
+  document.querySelectorAll("[data-summon-friend]").forEach((button) => {
+    button.addEventListener("click", () => send("summonFriend", { friendCode: button.dataset.summonFriend }));
   });
   document.querySelectorAll("[data-accept-gift]").forEach((button) => {
     button.addEventListener("click", () => send("acceptGift", { giftId: button.dataset.acceptGift }));
@@ -3392,6 +3570,21 @@ function showHouseVisitRequest(message) {
   `;
   item.querySelector("button").addEventListener("click", () => {
     send("acceptHouseVisit", { requesterId: message.requesterId });
+    item.remove();
+  });
+  els.chatLog.append(item);
+  els.chatLog.scrollTop = els.chatLog.scrollHeight;
+}
+
+function showIslandInvite(message) {
+  const item = document.createElement("div");
+  item.className = "invite-message";
+  item.innerHTML = `
+    <span><strong>${escapeHtml(message.fromName)}</strong> 邀請你去 ${escapeHtml(islandLabel(message.island))}。</span>
+    <button type="button" class="primary-button">過去</button>
+  `;
+  item.querySelector("button").addEventListener("click", () => {
+    send("acceptIslandInvite", { inviteId: message.inviteId });
     item.remove();
   });
   els.chatLog.append(item);

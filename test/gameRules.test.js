@@ -4,6 +4,8 @@ import {
   CAT_VARIANTS,
   DEFAULT_TITLE_ID,
   DEFAULT_TITLES,
+  HOST_ISLAND_CODE,
+  ISLAND_CODES,
   LEVEL_REWARDS,
   LEVEL_TASKS,
   MAX_CHALLENGE_STEP_Y,
@@ -16,6 +18,7 @@ import {
   applyHousePaint,
   areHouseFriends,
   buyItem,
+  canTravelToIsland,
   challengeLevelForAccounts,
   challengeFinishForLevel,
   claimLevelReward,
@@ -30,12 +33,14 @@ import {
   richestDiamondAccountCode,
   isValidNewAccountCode,
   makeGuestAccount,
+  normalizeIslandCode,
   normalizeWeatherMode,
   roomFurniturePlatforms,
   roomFurniturePlacement,
   redeemCode,
   sendCoinGift,
   sendDiamondGift,
+  useRocketPaint,
   useConsumable
 } from "../src/gameRules.js";
 
@@ -90,6 +95,16 @@ test("weather modes are fixed and invalid choices fall back to auto", () => {
   assert.equal(normalizeWeatherMode("nope"), "auto");
 });
 
+test("islands include A to Z plus the host island", () => {
+  assert.equal(ISLAND_CODES.length, 26);
+  assert.equal(ISLAND_CODES[0], "A");
+  assert.equal(ISLAND_CODES.at(-1), "Z");
+  assert.equal(HOST_ISLAND_CODE, "Inn");
+  assert.equal(normalizeIslandCode("b"), "B");
+  assert.equal(normalizeIslandCode("inn"), "Inn");
+  assert.equal(normalizeIslandCode("??"), "A");
+});
+
 test("built-in achievement titles have the requested names and colors", () => {
   assert.deepEqual(DEFAULT_TITLES["super-cat"].colors, ["red", "deepBlue", "red", "deepBlue"]);
   assert.deepEqual(DEFAULT_TITLES["park-lover-kitten"].colors, ["pink", "lightBlue"]);
@@ -137,7 +152,7 @@ test("cat tree and room slide prefer wall-side placement", () => {
 test("shop has at least one hundred visible non-furniture items", () => {
   const nonFurniture = SHOP_ITEMS.filter((item) => item.type !== "furniture");
   assert.ok(nonFurniture.length >= 100);
-  assert.equal(nonFurniture.every((item) => item.slot || item.type === "house" || item.type === "consumable"), true);
+  assert.equal(nonFurniture.every((item) => item.slot || ["house", "rocket", "rocket-paint", "consumable"].includes(item.type)), true);
 });
 
 test("shop includes several one-time toys", () => {
@@ -149,6 +164,30 @@ test("shop includes several one-time toys", () => {
 test("shop includes house body and roof paint", () => {
   assert.ok(SHOP_ITEMS.some((item) => item.id === "house-body-paint-blue"));
   assert.ok(SHOP_ITEMS.some((item) => item.id === "house-roof-paint-starry-night"));
+});
+
+test("rocket travel requires a rocket unless the player is invited", () => {
+  const account = createAccount("abc", { currentIsland: "A" });
+  assert.equal(canTravelToIsland(account, "B"), false);
+  assert.equal(canTravelToIsland(account, "B", true), true);
+  assert.equal(canTravelToIsland({ ...account, inventory: ["rocket"] }, "B"), true);
+  assert.equal(canTravelToIsland({ ...account, inventory: ["rocket"] }, "Inn"), false);
+});
+
+test("rocket needs a house and rocket paint updates the rocket color", () => {
+  const noHouse = createAccount("abc", { coins: 600 });
+  assert.equal(buyItem(noHouse, "rocket").ok, false);
+
+  const withHouse = createAccount("abc", { coins: 700, house: { x: 0, y: 1, z: 0, island: "A" } });
+  const rocket = buyItem(withHouse, "rocket");
+  assert.equal(rocket.ok, true);
+  assert.equal(rocket.account.inventory.includes("rocket"), true);
+
+  const paint = buyItem({ ...rocket.account, coins: 500 }, "rocket-paint-pink");
+  assert.equal(paint.ok, true);
+  const painted = useRocketPaint(paint.account, "rocket-paint-pink");
+  assert.equal(painted.ok, true);
+  assert.equal(painted.account.rocketPaint, "pink");
 });
 
 test("coin codes can only be redeemed once per account", () => {

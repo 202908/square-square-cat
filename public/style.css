@@ -252,6 +252,18 @@ h2 {
   color: var(--warning);
 }
 
+.island-select {
+  min-height: 42px;
+  min-width: 92px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 0 10px;
+  font: inherit;
+  font-weight: 700;
+}
+
 .survival-hud {
   display: inline-flex;
   gap: 8px;
