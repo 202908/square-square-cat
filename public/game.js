@@ -31,7 +31,8 @@ const state = {
   ferris: null,
   totalAccounts: 0,
   cameraYaw: 0,
-  cameraDrag: { active: false, pointerId: null, x: 0 },
+  cameraPitch: 0.12,
+  cameraDrag: { active: false, pointerId: null, x: 0, y: 0 },
   keys: new Set(),
   joystick: { active: false, x: 0, z: 0 },
   actionCooldowns: {},
@@ -287,27 +288,34 @@ function bindCameraDrag() {
   els.canvas.addEventListener("pointerdown", (event) => {
     if (is2DMode()) return;
     if (event.button !== undefined && event.button !== 0) return;
-    state.cameraDrag = { active: true, pointerId: event.pointerId, x: event.clientX };
+    state.cameraDrag = { active: true, pointerId: event.pointerId, x: event.clientX, y: event.clientY };
     els.canvas.setPointerCapture(event.pointerId);
     els.canvas.classList.add("dragging-camera");
   });
   els.canvas.addEventListener("pointermove", (event) => {
     if (!state.cameraDrag.active || state.cameraDrag.pointerId !== event.pointerId) return;
     const dx = event.clientX - state.cameraDrag.x;
+    const dy = event.clientY - state.cameraDrag.y;
     state.cameraDrag.x = event.clientX;
+    state.cameraDrag.y = event.clientY;
     state.cameraYaw -= dx * 0.008;
+    state.cameraPitch = clampNumber(state.cameraPitch + dy * 0.006, -0.48, 0.72);
   });
   const endDrag = (event) => {
     if (state.cameraDrag.pointerId !== event.pointerId) return;
-    state.cameraDrag = { active: false, pointerId: null, x: 0 };
+    state.cameraDrag = { active: false, pointerId: null, x: 0, y: 0 };
     els.canvas.classList.remove("dragging-camera");
   };
   els.canvas.addEventListener("pointerup", endDrag);
   els.canvas.addEventListener("pointercancel", endDrag);
   els.canvas.addEventListener("lostpointercapture", () => {
-    state.cameraDrag = { active: false, pointerId: null, x: 0 };
+    state.cameraDrag = { active: false, pointerId: null, x: 0, y: 0 };
     els.canvas.classList.remove("dragging-camera");
   });
+}
+
+function clampNumber(value, min, max) {
+  return Math.min(max, Math.max(min, value));
 }
 
 function showScreen(name) {
@@ -553,15 +561,16 @@ function createWeatherEffects() {
   const rainbowColors = [0xff4f5f, 0xff9b3d, 0xffd95a, 0x67d88a, 0x62b7ff, 0x5b6dff, 0xb78cff];
   rainbowColors.forEach((color, index) => {
     const points = [];
-    const radius = 30 - index * 2.05;
-    for (let step = 0; step <= 64; step += 1) {
-      const angle = Math.PI * (step / 64);
+    const radius = 38 - index * 2.35;
+    for (let step = 0; step <= 80; step += 1) {
+      const angle = Math.PI * (step / 80);
       points.push(new THREE.Vector3(Math.cos(angle) * radius, Math.sin(angle) * radius, 0));
     }
     const arc = new THREE.Mesh(
-      new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points), 72, 0.62, 10, false),
-      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.92 })
+      new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points), 96, 0.78, 12, false),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.86, depthWrite: false })
     );
+    arc.userData.baseY = 0;
     rainbowGroup.add(arc);
   });
   const cloudMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.86 });
@@ -570,29 +579,41 @@ function createWeatherEffects() {
     for (let i = 0; i < 4; i += 1) {
       const puff = new THREE.Mesh(new THREE.SphereGeometry(2.8, 14, 8), cloudMaterial);
       puff.scale.set(1.4, 0.48, 0.65);
-      puff.position.set(side * (27 + i * 2.8), -1.2 + Math.sin(i) * 0.5, 0);
+      puff.position.set(side * (34 + i * 3.1), -1.2 + Math.sin(i) * 0.5, 0);
       cloud.add(puff);
     }
     rainbowGroup.add(cloud);
   }
-  rainbowGroup.position.set(0, 38, -62);
+  rainbowGroup.position.set(-26, 20, -88);
+  rainbowGroup.rotation.set(-0.04, 0.28, 0);
+  rainbowGroup.scale.set(1.08, 0.82, 1);
   rainbowGroup.visible = false;
   scene.add(rainbowGroup);
 
   auroraGroup = new THREE.Group();
-  const auroraColors = [0x67d88a, 0x62b7ff, 0xff8fcb];
+  auroraGroup.position.set(0, 66, -92);
+  auroraGroup.rotation.set(-0.2, 0, 0);
+  const auroraColors = [0x67d88a, 0x62b7ff, 0xff8fcb, 0xb78cff];
   auroraColors.forEach((color, index) => {
-    const geometry = new THREE.PlaneGeometry(80, 9, 24, 1);
+    const widthSegments = 34;
+    const geometry = new THREE.PlaneGeometry(88, 9, widthSegments, 1);
+    const position = geometry.attributes.position;
+    const basePositions = [];
+    for (let i = 0; i < position.count; i += 1) {
+      basePositions.push(position.getX(i), position.getY(i), position.getZ(i));
+    }
     const material = new THREE.MeshBasicMaterial({
       color,
       transparent: true,
-      opacity: 0.26,
+      opacity: 0.25,
       side: THREE.DoubleSide,
       depthWrite: false
     });
     const ribbon = new THREE.Mesh(geometry, material);
-    ribbon.position.set(-20 + index * 24, 58 + index * 4, -82 - index * 3);
-    ribbon.rotation.set(-0.28, 0.12 * index, 0.05 * index);
+    ribbon.position.set(-28 + index * 18, index * 3.2, -index * 2);
+    ribbon.rotation.set(0.04 * index, 0.1 * index, -0.08 + index * 0.04);
+    ribbon.userData.basePositions = basePositions;
+    ribbon.userData.widthSegments = widthSegments;
     ribbon.userData.phase = index * 1.4;
     auroraGroup.add(ribbon);
   });
@@ -2933,21 +2954,33 @@ function updateWeatherEffects(dt, weather) {
   }
   if (rainbowGroup) {
     rainbowGroup.visible = weather === "rainbow";
-    if (rainbowGroup.visible && camera) {
-      const direction = new THREE.Vector3();
-      camera.getWorldDirection(direction);
-      rainbowGroup.position.copy(camera.position).add(direction.multiplyScalar(92));
-      rainbowGroup.position.y = Math.max(camera.position.y + 24, 34);
-      rainbowGroup.lookAt(camera.position);
-      rainbowGroup.rotation.z = Math.sin((clock?.elapsedTime || 0) * 0.55) * 0.025;
+    if (rainbowGroup.visible) {
+      const time = clock?.elapsedTime || 0;
+      rainbowGroup.children.forEach((child, index) => {
+        if (!child.material) return;
+        child.material.opacity = child.geometry?.type === "TubeGeometry"
+          ? 0.76 + Math.sin(time * 0.8 + index * 0.35) * 0.08
+          : 0.82;
+      });
     }
   }
   if (auroraGroup) {
     auroraGroup.visible = weather === "aurora";
     for (const ribbon of auroraGroup.children) {
       const phase = Number(ribbon.userData.phase || 0);
-      ribbon.scale.y = 1 + Math.sin((clock?.elapsedTime || 0) * 1.2 + phase) * 0.18;
-      ribbon.material.opacity = 0.22 + Math.sin((clock?.elapsedTime || 0) * 1.6 + phase) * 0.08;
+      const time = clock?.elapsedTime || 0;
+      const positions = ribbon.geometry.attributes.position;
+      const basePositions = ribbon.userData.basePositions || [];
+      for (let i = 0; i < positions.count; i += 1) {
+        const baseX = basePositions[i * 3] || 0;
+        const baseY = basePositions[i * 3 + 1] || 0;
+        const wave = Math.sin(baseX * 0.14 + time * 1.15 + phase) * 2.4;
+        const softWave = Math.sin(baseX * 0.07 + time * 0.72 + phase) * 1.4;
+        positions.setY(i, baseY + wave + softWave);
+        positions.setZ(i, Math.sin(baseX * 0.1 + time * 0.85 + phase) * 1.8);
+      }
+      positions.needsUpdate = true;
+      ribbon.material.opacity = 0.22 + Math.sin(time * 1.6 + phase) * 0.08;
     }
   }
 }
@@ -2965,13 +2998,15 @@ function animate() {
   if (me) {
     const distance = 15.8;
     const baseYaw = -0.6 + state.cameraYaw;
+    const height = 6.4 + state.cameraPitch * 9;
+    const horizontalDistance = distance * Math.cos(state.cameraPitch * 0.75);
     const target = new THREE.Vector3(
-      me.x + Math.sin(baseYaw) * distance,
-      me.y + 8,
-      me.z + Math.cos(baseYaw) * distance
+      me.x + Math.sin(baseYaw) * horizontalDistance,
+      me.y + height,
+      me.z + Math.cos(baseYaw) * horizontalDistance
     );
     camera.position.lerp(target, 0.08);
-    camera.lookAt(me.x, me.y + 1, me.z);
+    camera.lookAt(me.x, me.y + 2.2 + state.cameraPitch * 12, me.z);
   } else {
     camera.position.set(0, 16, 32);
     camera.lookAt(0, 0, 0);
