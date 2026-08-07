@@ -3054,8 +3054,8 @@ function sendInput() {
   const rightX = Math.cos(cameraAngle);
   const rightZ = -Math.sin(cameraAngle);
   const forwardAmount = -localZ;
-  input.x = rightX * localX + forwardX * forwardAmount;
-  input.z = rightZ * localX + forwardZ * forwardAmount;
+  input.x = -rightX * localX + forwardX * forwardAmount;
+  input.z = -rightZ * localX + forwardZ * forwardAmount;
   state.socket.send(JSON.stringify({ type: "input", input }));
 }
 
