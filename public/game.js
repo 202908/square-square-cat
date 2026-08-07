@@ -31,7 +31,7 @@ const state = {
   ferris: null,
   totalAccounts: 0,
   cameraYaw: 0,
-  cameraPitch: 0.12,
+  cameraPitch: 0.08,
   cameraDrag: { active: false, pointerId: null, x: 0, y: 0 },
   keys: new Set(),
   joystick: { active: false, x: 0, z: 0 },
@@ -298,8 +298,8 @@ function bindCameraDrag() {
     const dy = event.clientY - state.cameraDrag.y;
     state.cameraDrag.x = event.clientX;
     state.cameraDrag.y = event.clientY;
-    state.cameraYaw -= dx * 0.008;
-    state.cameraPitch = clampNumber(state.cameraPitch + dy * 0.006, -0.48, 0.72);
+    state.cameraYaw -= dx * 0.0075;
+    state.cameraPitch = clampNumber(state.cameraPitch - dy * 0.0055, -0.35, 0.58);
   });
   const endDrag = (event) => {
     if (state.cameraDrag.pointerId !== event.pointerId) return;
@@ -2996,17 +2996,20 @@ function animate() {
   updateSky(dt);
   const me = state.players.get(state.myId);
   if (me) {
-    const distance = 15.8;
-    const baseYaw = -0.6 + state.cameraYaw;
-    const height = 6.4 + state.cameraPitch * 9;
-    const horizontalDistance = distance * Math.cos(state.cameraPitch * 0.75);
+    const distance = 17.5;
+    const baseYaw = state.cameraYaw;
+    const forwardX = Math.sin(baseYaw);
+    const forwardZ = Math.cos(baseYaw);
+    const horizontalDistance = distance * Math.cos(state.cameraPitch * 0.65);
+    const cameraHeight = 6.6 - state.cameraPitch * 3.2;
+    const lookHeight = 2.2 + state.cameraPitch * 10;
     const target = new THREE.Vector3(
-      me.x + Math.sin(baseYaw) * horizontalDistance,
-      me.y + height,
-      me.z + Math.cos(baseYaw) * horizontalDistance
+      me.x - forwardX * horizontalDistance,
+      me.y + cameraHeight,
+      me.z - forwardZ * horizontalDistance
     );
     camera.position.lerp(target, 0.08);
-    camera.lookAt(me.x, me.y + 2.2 + state.cameraPitch * 12, me.z);
+    camera.lookAt(me.x + forwardX * 3.8, me.y + lookHeight, me.z + forwardZ * 3.8);
   } else {
     camera.position.set(0, 16, 32);
     camera.lookAt(0, 0, 0);
@@ -3045,9 +3048,9 @@ function sendInput() {
     state.socket.send(JSON.stringify({ type: "input", input }));
     return;
   }
-  const cameraAngle = -0.6 + state.cameraYaw;
-  const forwardX = -Math.sin(cameraAngle);
-  const forwardZ = -Math.cos(cameraAngle);
+  const cameraAngle = state.cameraYaw;
+  const forwardX = Math.sin(cameraAngle);
+  const forwardZ = Math.cos(cameraAngle);
   const rightX = Math.cos(cameraAngle);
   const rightZ = -Math.sin(cameraAngle);
   const forwardAmount = -localZ;
