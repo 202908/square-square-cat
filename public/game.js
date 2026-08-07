@@ -16,6 +16,7 @@ const state = {
   titleCatalog: {},
   titleColors: {},
   titlePlayers: [],
+  onlinePlayers: [],
   players: new Map(),
   flatWorld: { coins: [], houses: [], rockets: [], bushes: [], swing: null, ferris: null, effects: [] },
   meshes: new Map(),
@@ -414,6 +415,7 @@ function updateAccount(message) {
   state.titleCatalog = message.titleCatalog || state.titleCatalog;
   state.titleColors = message.titleColors || state.titleColors;
   state.titlePlayers = message.titlePlayers || state.titlePlayers;
+  state.onlinePlayers = message.onlinePlayers || state.onlinePlayers;
   els.accountName.textContent = state.account.code;
   els.levelText.textContent = state.account.isHost ? "主機" : `Lv. ${state.account.level}`;
   els.coinAmount.textContent = state.account.isHost ? "金幣 ∞" : `金幣 ${state.account.coins}`;
@@ -856,6 +858,7 @@ function updateWorldState(message) {
   state.ferris = ferris || state.ferris;
   state.flatWorld = { coins, houses, rockets, bushes, swing, ferris: state.ferris, effects };
   state.totalAccounts = Number(message.totalAccounts || state.totalAccounts || 0);
+  state.onlinePlayers = message.onlinePlayers || state.onlinePlayers;
   renderIslandSelect(message.island || state.account?.currentIsland || "A");
   const ids = new Set(players.map((player) => player.id));
   for (const [id, mesh] of state.meshes) {
@@ -3350,11 +3353,27 @@ function bagActionButton(item) {
 
 function showFriendsModal() {
   const gifts = state.account.giftInbox || [];
+  const friendRequests = state.account.friendRequests || [];
   openModal("好友", `
     <form id="friendForm" class="list">
       <input id="friendCodeInput" placeholder="輸入好友帳號亂碼" />
       <button class="primary-button" type="submit">加好友</button>
     </form>
+    <h3>好友申請</h3>
+    <div class="list">
+      ${friendRequests.map((friend) => `
+        <div class="list-item">
+          <div class="split">
+            <strong>${escapeHtml(friend)}</strong>
+            <span>想加你為好友</span>
+          </div>
+          <div class="row">
+            <button data-accept-friend="${escapeHtml(friend)}" class="primary-button">同意</button>
+            <button data-reject-friend="${escapeHtml(friend)}">拒絕</button>
+          </div>
+        </div>
+      `).join("") || "<p>目前沒有好友申請。</p>"}
+    </div>
     <h3>收到的禮物</h3>
     <div class="list">
       ${gifts.map((gift) => {
@@ -3393,6 +3412,12 @@ function showFriendsModal() {
   document.querySelector("#friendForm").addEventListener("submit", (event) => {
     event.preventDefault();
     send("addFriend", { friendCode: document.querySelector("#friendCodeInput").value });
+  });
+  document.querySelectorAll("[data-accept-friend]").forEach((button) => {
+    button.addEventListener("click", () => send("acceptFriend", { friendCode: button.dataset.acceptFriend }));
+  });
+  document.querySelectorAll("[data-reject-friend]").forEach((button) => {
+    button.addEventListener("click", () => send("rejectFriend", { friendCode: button.dataset.rejectFriend }));
   });
   document.querySelector("#leaveTeamButton").addEventListener("click", () => send("leaveTeam"));
   document.querySelectorAll("[data-team-invite]").forEach((button) => {
@@ -3491,6 +3516,10 @@ function showOnlinePlayersModal() {
     if (a.isHost !== b.isHost) return a.isHost ? -1 : 1;
     return String(a.displayName || a.accountCode).localeCompare(String(b.displayName || b.accountCode));
   });
+  const onlinePlayers = (state.onlinePlayers?.length ? state.onlinePlayers : players).sort((a, b) => {
+    if (a.isHost !== b.isHost) return a.isHost ? -1 : 1;
+    return String(a.displayName || a.accountCode).localeCompare(String(b.displayName || b.accountCode));
+  });
   openModal("在線玩家", `
     <div class="list">
       <div class="list-item">
@@ -3502,16 +3531,16 @@ function showOnlinePlayersModal() {
       <div class="list-item">
         <div class="split">
           <strong>目前在線</strong>
-          <span>${players.length} 隻貓</span>
+          <span>${onlinePlayers.length} 隻貓</span>
         </div>
       </div>
-      ${players.map((player) => `
+      ${onlinePlayers.map((player) => `
         <div class="list-item">
           <div class="split">
             <strong>${escapeHtml(player.displayName || player.accountCode)}</strong>
             <span>${player.isHost ? "主機" : `Lv. ${player.level || 1}`}</span>
           </div>
-          <small>${locationLabel(player.location)} · 金幣 ${player.isHost ? "∞" : Number(player.coins || 0)} · 鑽石 ${player.isHost ? "∞" : Number(player.diamonds || 0)}</small>
+          <small>${islandLabel(player.island || state.account.currentIsland)} · ${locationLabel(player.location)} · 金幣 ${player.isHost ? "∞" : Number(player.coins || 0)} · 鑽石 ${player.isHost ? "∞" : Number(player.diamonds || 0)}</small>
         </div>
       `).join("") || "<p>目前沒有玩家在線。</p>"}
     </div>
@@ -3522,7 +3551,8 @@ function locationLabel(location) {
   return {
     island: "貓眼星雲島",
     challenge: "闖關中",
-    room: "房間裡"
+    room: "房間裡",
+    rocket: "火箭裡"
   }[location] || "未知位置";
 }
 

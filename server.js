@@ -11,7 +11,9 @@ import {
   DEFAULT_TITLES,
   HOST_CODE,
   HOST_DEFAULT_HOUSE,
+  HOST_DEFAULT_INVENTORY,
   HOST_DEFAULT_ROCKET_PAINT,
+  HOST_DEFAULT_ROOM_FURNITURE_IDS,
   HOST_PASSWORD,
   HOST_ISLAND_CODE,
   ISLAND_CODES,
@@ -231,12 +233,20 @@ async function loadData() {
       }
       if (account.isHost && !account.inventory?.includes("cat-house")) {
         account.inventory ||= [];
-        account.inventory.push("cat-house");
-        changedAccounts = true;
       }
-      if (account.isHost && !account.inventory.includes("rocket")) {
-        account.inventory.push("rocket");
-        changedAccounts = true;
+      if (account.isHost) {
+        for (const itemId of HOST_DEFAULT_INVENTORY) {
+          if (!account.inventory.includes(itemId)) {
+            account.inventory.push(itemId);
+            changedAccounts = true;
+          }
+        }
+        for (const [slot, itemId] of Object.entries({ clothes: "wings", trail: "rainbow-trail", pet: "cat-pet" })) {
+          if (account.equipped[slot] !== itemId) {
+            account.equipped[slot] = itemId;
+            changedAccounts = true;
+          }
+        }
       }
       account.house ??= null;
       if (account.isHost && !account.house) {
@@ -284,11 +294,15 @@ async function loadData() {
           changedAccounts = true;
         }
       }
-      if (account.isHost && account.roomItems.length < 12) {
+      if (account.isHost && account.roomItems.length < HOST_DEFAULT_ROOM_FURNITURE_IDS.length) {
         account.roomItems = createHostDefaultRoomItems();
         changedAccounts = true;
       }
       account.giftInbox ??= [];
+      if (!Array.isArray(account.friendRequests)) {
+        account.friendRequests = [];
+        changedAccounts = true;
+      }
       account.survivalMode ??= account.isHost ? "host" : null;
       account.hunger ??= 100;
       account.thirst ??= 100;
@@ -535,6 +549,12 @@ function handleMessage(socket, message) {
     case "addFriend":
       handleAddFriend(socket, session, message.friendCode);
       break;
+    case "acceptFriend":
+      handleAcceptFriend(socket, session, message.friendCode);
+      break;
+    case "rejectFriend":
+      handleRejectFriend(socket, session, message.friendCode);
+      break;
     case "adminUpsertCode":
       handleAdminUpsertCode(socket, session, message);
       break;
@@ -684,6 +704,7 @@ function buildStateForSession(viewer, richestCode) {
     survivalHazards: [],
     weather: worldWeather,
     totalAccounts: Object.keys(accounts).length,
+    onlinePlayers: viewer.account.isHost ? onlinePlayersForHost() : undefined,
     bushes: worldBushes,
     island,
     islandCodes: ISLAND_CODES,
@@ -728,6 +749,23 @@ function buildStateForSession(viewer, richestCode) {
       diamonds: session.account.diamonds
     }))
   };
+}
+
+function onlinePlayersForHost() {
+  return [...sessions.values()].map((session) => ({
+    id: session.id,
+    accountCode: session.account.code,
+    displayName: displayNameFor(session.account),
+    isHost: session.account.isHost,
+    level: session.account.level,
+    location: session.player.location,
+    island: normalizeIslandCode(session.player.island || session.account.currentIsland || "A"),
+    coins: session.account.coins,
+    diamonds: session.account.diamonds
+  })).sort((a, b) => {
+    if (a.isHost !== b.isHost) return a.isHost ? -1 : 1;
+    return String(a.displayName || a.accountCode).localeCompare(String(b.displayName || b.accountCode));
+  });
 }
 
 function playerVisibleToSession(viewer, candidate) {
@@ -1568,13 +1606,90 @@ function handleSetSurvivalMode(socket, session, mode) {
 }
 
 function handleAddFriend(socket, session, friendCode) {
-  if (!accounts[String(friendCode || "").trim()]) {
+  const code = String(friendCode || "").trim();
+  const targetAccount = accounts[code];
+  if (!targetAccount) {
     send(socket, "notice", { message: "找不到這個好友帳號。" });
     return;
   }
-  const result = addFriend(session.account, friendCode);
-  updateAccount(socket, session, result);
-  if (result.ok) incrementAchievement(session, "friendsAdded");
+  if (code === session.account.code) {
+    send(socket, "notice", { message: "不能加自己為好友。" });
+    return;
+  }
+  if ((session.account.friends || []).includes(code)) {
+    send(socket, "notice", { message: "你們已經是好友了。" });
+    return;
+  }
+  targetAccount.friendRequests ||= [];
+  if (targetAccount.friendRequests.includes(session.account.code)) {
+    send(socket, "notice", { message: "好友申請已經送出，等對方同意就可以了。" });
+    return;
+  }
+  targetAccount.friendRequests.push(session.account.code);
+  accounts[targetAccount.code] = targetAccount;
+  saveAccounts();
+  const targetSession = findSessionByAccountCode(targetAccount.code);
+  if (targetSession) {
+    targetSession.account = targetAccount;
+    sendAccount(targetSession.socket, targetSession.account);
+    send(targetSession.socket, "notice", { message: `${displayNameFor(session.account)} 想加你為好友。` });
+  }
+  send(socket, "notice", { message: "好友申請已送出，等對方同意。" });
+}
+
+function handleAcceptFriend(socket, session, friendCode) {
+  const code = String(friendCode || "").trim();
+  session.account.friendRequests ||= [];
+  if (!session.account.friendRequests.includes(code)) {
+    send(socket, "notice", { message: "找不到這個好友申請。" });
+    return;
+  }
+  const requesterSession = findSessionByAccountCode(code);
+  const requesterAccount = requesterSession?.account || accounts[code];
+  if (!requesterAccount) {
+    session.account.friendRequests = session.account.friendRequests.filter((requestCode) => requestCode !== code);
+    persistSessionAccount(session);
+    sendAccount(socket, session.account);
+    send(socket, "notice", { message: "這個帳號已經不存在，申請已移除。" });
+    return;
+  }
+  const receiverResult = addFriend(session.account, code);
+  if (!receiverResult.ok) {
+    send(socket, "notice", { message: receiverResult.message });
+    return;
+  }
+  const requesterResult = addFriend(requesterAccount, session.account.code);
+  session.account = receiverResult.account;
+  session.account.friendRequests = session.account.friendRequests.filter((requestCode) => requestCode !== code);
+  persistSessionAccount(session);
+  if (requesterResult.ok) {
+    const updatedRequester = requesterResult.account;
+    if (requesterSession) {
+      requesterSession.account = updatedRequester;
+      persistSessionAccount(requesterSession);
+      sendAccount(requesterSession.socket, requesterSession.account);
+      send(requesterSession.socket, "notice", { message: `${displayNameFor(session.account)} 同意你的好友申請。` });
+    } else {
+      accounts[updatedRequester.code] = updatedRequester;
+      saveAccounts();
+    }
+  }
+  sendAccount(socket, session.account);
+  send(socket, "notice", { message: `已和 ${code} 成為好友。` });
+  incrementAchievement(session, "friendsAdded");
+}
+
+function handleRejectFriend(socket, session, friendCode) {
+  const code = String(friendCode || "").trim();
+  session.account.friendRequests ||= [];
+  if (!session.account.friendRequests.includes(code)) {
+    send(socket, "notice", { message: "找不到這個好友申請。" });
+    return;
+  }
+  session.account.friendRequests = session.account.friendRequests.filter((requestCode) => requestCode !== code);
+  persistSessionAccount(session);
+  sendAccount(socket, session.account);
+  send(socket, "notice", { message: "已拒絕好友申請。" });
 }
 
 function handleSendGift(socket, session, friendCode, itemId) {
@@ -2219,6 +2334,7 @@ function sendAccount(socket, account) {
     titleCatalog,
     titleColors: TITLE_COLORS,
     titlePlayers: account.isHost ? titlePlayers() : undefined,
+    onlinePlayers: account.isHost ? onlinePlayersForHost() : undefined,
     coinCodes: account.isHost ? coinCodes : undefined
   });
 }

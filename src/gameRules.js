@@ -23,6 +23,7 @@ export const WEATHER_MODES = ["auto", "rain", "thunder", "rainbow", "aurora"];
 export const ISLAND_CODES = [..."ABCDEFGHIJKLMNOPQRSTUVWXYZ"];
 export const HOST_ISLAND_CODE = "Inn";
 export const HOST_DEFAULT_ROCKET_PAINT = "pink";
+export const HOST_DEFAULT_INVENTORY = ["cat-house", "rocket", "wings", "rainbow-trail", "cat-pet"];
 export const HOST_DEFAULT_HOUSE = {
   x: 2,
   y: 1,
@@ -225,28 +226,7 @@ export const FURNITURE_ITEMS = [
   ["tiny-piano", "小鋼琴", 340]
 ].map(([id, name, price]) => ({ id, name, type: "furniture", price }));
 
-export const HOST_DEFAULT_ROOM_FURNITURE_IDS = [
-  "cloud-bed",
-  "cat-sofa",
-  "cat-tree",
-  "mini-slide-toy",
-  "fish-table",
-  "bubble-chair",
-  "moon-lamp",
-  "star-rug",
-  "rainbow-carpet",
-  "shell-bookshelf",
-  "space-tv",
-  "cloud-kitchen",
-  "tiny-piano",
-  "star-bathtub",
-  "kitty-wardrobe",
-  "fishbowl",
-  "rocket-shelf",
-  "sunny-window",
-  "comet-mirror",
-  "ufo-mobile"
-];
+export const HOST_DEFAULT_ROOM_FURNITURE_IDS = FURNITURE_ITEMS.map((item) => item.id);
 
 export function roomFurniturePlacement(itemId, existingItems = []) {
   const occupied = new Set(existingItems.map((item) => `${Math.round(item.x * 10) / 10}:${Math.round(item.z * 10) / 10}`));
@@ -263,9 +243,18 @@ export function roomFurniturePlacement(itemId, existingItems = []) {
   for (const char of itemId) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
   const fallback = firstAvailableRoomSlot(baseSlots, occupied, hash);
   if (fallback) return fallback;
-  const row = existingItems.length % 5;
-  const col = Math.floor(existingItems.length / 5) % 5;
-  return { x: 208 + row * 6, y: 1, z: -12 + col * 6, yaw: 0 };
+  const denseSlots = Array.from({ length: 7 }, (_, zIndex) =>
+    Array.from({ length: 8 }, (_, xIndex) => ({
+      x: 205.8 + xIndex * 4.1,
+      z: -14 + zIndex * 4.6,
+      yaw: 0
+    }))
+  ).flat();
+  const dense = firstAvailableRoomSlot(denseSlots, occupied, hash);
+  if (dense) return dense;
+  const row = existingItems.length % 8;
+  const col = Math.floor(existingItems.length / 8) % 7;
+  return { x: 205.8 + row * 4.1, y: 1, z: -14 + col * 4.6, yaw: 0 };
 }
 
 function firstAvailableRoomSlot(slots, occupied, startOffset) {
@@ -427,7 +416,7 @@ export const SHOP_ITEMS = [
   { id: "comet-tail", name: "彗星尾巴", slot: "tail", type: "wearable", price: 180 },
   { id: "wings", name: "貓眼星雲翅膀", slot: "clothes", type: "wearable", price: 1500 },
   { id: "cloud-trail", name: "雲朵拖尾", slot: "trail", type: "trail", price: 260 },
-  { id: "rainbow-trail", name: "彩虹拖尾", slot: "trail", type: "trail", price: 360 },
+  { id: "rainbow-trail", name: "彩虹拖尾特效", slot: "trail", type: "trail", price: 360 },
   { id: "star-trail", name: "星星拖尾", slot: "trail", type: "trail", price: 300 },
   { id: "bubble-trail", name: "泡泡拖尾", slot: "trail", type: "trail", price: 220 },
   { id: "pudding-trail", name: "布丁拖尾", slot: "trail", type: "trail", price: 280 },
@@ -440,7 +429,7 @@ export const SHOP_ITEMS = [
   ...HOUSE_PAINT_ITEMS,
   ...EXTRA_NON_FURNITURE_ITEMS,
   ...FURNITURE_ITEMS
-].map((item) => {
+].filter((item) => item.type !== "pet" || item.id === "cat-pet").map((item) => {
   if (["wings", "angel-wings", "butterfly-wings", "snow-wings", "crystal-armor", "ufo-pack", "rocket-pack"].includes(item.id)) {
     return { ...item, diamondPrice: Math.max(2, Math.ceil(item.price / 350)) };
   }
@@ -605,13 +594,13 @@ export function createAccount(code, overrides = {}) {
     diamonds: isHost ? 999999999 : 0,
     isHost,
     catVariant: isHost ? "host" : pickRandomCatVariant(),
-    inventory: isHost ? ["cat-house", "rocket"] : [],
+    inventory: isHost ? [...HOST_DEFAULT_INVENTORY] : [],
     equipped: {
       hat: null,
-      clothes: null,
+      clothes: isHost ? "wings" : null,
       tail: null,
-      trail: null,
-      pet: null,
+      trail: isHost ? "rainbow-trail" : null,
+      pet: isHost ? "cat-pet" : null,
       title: isHost ? "host-cat" : DEFAULT_TITLE_ID
     },
     titles: isHost ? [DEFAULT_TITLE_ID, "host-cat"] : [DEFAULT_TITLE_ID],
@@ -624,6 +613,7 @@ export function createAccount(code, overrides = {}) {
     redeemedCodes: [],
     claimedLevelRewards: [],
     friends: [],
+    friendRequests: [],
     survivalMode: isHost ? "host" : null,
     hunger: 100,
     thirst: 100,

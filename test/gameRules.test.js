@@ -4,7 +4,9 @@ import {
   CAT_VARIANTS,
   DEFAULT_TITLE_ID,
   DEFAULT_TITLES,
+  FURNITURE_ITEMS,
   HOST_DEFAULT_HOUSE,
+  HOST_DEFAULT_INVENTORY,
   HOST_DEFAULT_ROCKET_PAINT,
   HOST_DEFAULT_ROOM_FURNITURE_IDS,
   HOST_ISLAND_CODE,
@@ -114,8 +116,12 @@ test("host account starts on Inn island with a prepared rainbow house", () => {
   const account = createAccount(process.env.HOST_ACCOUNT_CODE || "host");
   if (!account.isHost) return;
   assert.deepEqual(account.house, HOST_DEFAULT_HOUSE);
-  assert.equal(account.inventory.includes("cat-house"), true);
-  assert.equal(account.inventory.includes("rocket"), true);
+  for (const itemId of HOST_DEFAULT_INVENTORY) {
+    assert.equal(account.inventory.includes(itemId), true);
+  }
+  assert.equal(account.equipped.clothes, "wings");
+  assert.equal(account.equipped.trail, "rainbow-trail");
+  assert.equal(account.equipped.pet, "cat-pet");
   assert.equal(account.rocketPaint, HOST_DEFAULT_ROCKET_PAINT);
   assert.equal(account.roomItems.length, HOST_DEFAULT_ROOM_FURNITURE_IDS.length);
   assert.equal(canTravelToIsland(account, "Z"), true);
@@ -124,6 +130,7 @@ test("host account starts on Inn island with a prepared rainbow house", () => {
 test("host default room starts packed with placed furniture", () => {
   const roomItems = createHostDefaultRoomItems();
   assert.equal(roomItems.length, HOST_DEFAULT_ROOM_FURNITURE_IDS.length);
+  assert.equal(roomItems.length, FURNITURE_ITEMS.length);
   assert.equal(new Set(roomItems.map((item) => item.id)).size, roomItems.length);
   assert.ok(roomItems.some((item) => item.itemId === "cat-tree"));
   assert.ok(roomItems.some((item) => item.itemId === "mini-slide-toy"));
@@ -143,6 +150,12 @@ test("built-in achievement titles have the requested names and colors", () => {
 
 test("shop has at least fifty furniture items", () => {
   assert.ok(SHOP_ITEMS.filter((item) => item.type === "furniture").length >= 50);
+});
+
+test("shop keeps rainbow trail and only the small cat pet", () => {
+  const pets = SHOP_ITEMS.filter((item) => item.type === "pet");
+  assert.deepEqual(pets.map((item) => item.id), ["cat-pet"]);
+  assert.ok(SHOP_ITEMS.some((item) => item.id === "rainbow-trail" && item.name === "彩虹拖尾特效"));
 });
 
 test("shop does not include removed poop items", () => {
