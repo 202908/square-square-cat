@@ -23,7 +23,7 @@ export const WEATHER_MODES = ["auto", "rain", "thunder", "rainbow", "aurora"];
 export const ISLAND_CODES = [..."ABCDEFGHIJKLMNOPQRSTUVWXYZ"];
 export const HOST_ISLAND_CODE = "Inn";
 export const HOST_DEFAULT_ROCKET_PAINT = "pink";
-export const HOST_DEFAULT_INVENTORY = ["cat-house", "rocket", "wings", "rainbow-trail", "cat-pet"];
+export const HOST_DEFAULT_INVENTORY = ["cat-house", "rocket", "wings", "rainbow-trail", "cat-pet", "moon-tail"];
 export const HOST_DEFAULT_HOUSE = {
   x: 2,
   y: 1,
@@ -598,7 +598,7 @@ export function createAccount(code, overrides = {}) {
     equipped: {
       hat: null,
       clothes: isHost ? "wings" : null,
-      tail: null,
+      tail: isHost ? "moon-tail" : null,
       trail: isHost ? "rainbow-trail" : null,
       pet: isHost ? "cat-pet" : null,
       title: isHost ? "host-cat" : DEFAULT_TITLE_ID

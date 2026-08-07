@@ -1014,11 +1014,11 @@ function createCatMesh(player) {
   group.add(face);
 
   const tail = new THREE.Mesh(
-    new THREE.ConeGeometry(0.24, 1.35, 12),
+    new THREE.CapsuleGeometry(0.16, 1.2, 8, 18),
     new THREE.MeshStandardMaterial({ color: 0xff8fb3, roughness: 0.6 })
   );
-  tail.position.set(0, 0.62, -1.18);
-  tail.rotation.x = Math.PI / 2.6;
+  tail.position.set(0, 0.56, -1.18);
+  tail.rotation.x = Math.PI / 2.15;
   tail.visible = false;
   group.add(tail);
 
@@ -1394,10 +1394,10 @@ function updateRocketPaint(group, paintId, isHost) {
     earGroup.name = "hostEars";
     [-0.36, 0.36].forEach((x) => {
       const material = new THREE.MeshStandardMaterial({ color: look.body, roughness: 0.5 });
-      const ear = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.45, 4), material);
+      const ear = new THREE.Mesh(new THREE.ConeGeometry(0.19, 0.42, 4), material);
       ear.name = "hostRocketEar";
-      ear.position.set(x, 4.72, 0);
-      ear.rotation.y = Math.PI / 4;
+      ear.position.set(x, 4.42, 0.08);
+      ear.rotation.set(0.12, Math.PI / 4, x < 0 ? -0.24 : 0.24);
       earGroup.add(ear);
     });
     group.add(earGroup);
@@ -1964,7 +1964,7 @@ function updateCatMesh(mesh, player) {
   mesh.rotation.y = player.yaw;
   mesh.scale.setScalar(player.id === state.myId ? 1.12 : 1);
   if (mesh.userData.tail) {
-    updateTailMesh(mesh.userData.tail, player.equipped?.tail);
+    updateTailMesh(mesh.userData.tail, player);
   }
   updateHatMesh(mesh.userData.hatGroup, player.equipped?.hat);
   updateClothesMesh(mesh.userData.clothesGroup, player.equipped?.clothes);
@@ -2032,10 +2032,16 @@ function updateHitFlash(mesh, player) {
   });
 }
 
-function updateTailMesh(tail, tailId) {
+function updateTailMesh(tail, player) {
+  const tailId = player.equipped?.tail;
   tail.visible = Boolean(tailId);
   if (!tailId) return;
-  tail.material.color.setHex(itemColor(tailId));
+  tail.material.color.setHex(player.isHost ? 0xff8fcb : itemColor(tailId));
+  const speed = Math.hypot(Number(player.vx || 0), Number(player.vz || 0));
+  const wag = Math.sin((clock?.elapsedTime || 0) * 8) * Math.min(0.42, speed * 0.04);
+  const lift = Math.min(0.32, speed * 0.035);
+  tail.position.set(0, 0.56 + lift * 0.2, -1.18);
+  tail.rotation.set(Math.PI / 2.15 - lift, wag, wag * 0.55);
   tail.scale.set(tailId.includes("dino") ? 1.35 : 1, tailId.includes("rainbow") ? 1.25 : 1, 1);
 }
 

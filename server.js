@@ -241,7 +241,7 @@ async function loadData() {
             changedAccounts = true;
           }
         }
-        for (const [slot, itemId] of Object.entries({ clothes: "wings", trail: "rainbow-trail", pet: "cat-pet" })) {
+        for (const [slot, itemId] of Object.entries({ clothes: "wings", tail: "moon-tail", trail: "rainbow-trail", pet: "cat-pet" })) {
           if (account.equipped[slot] !== itemId) {
             account.equipped[slot] = itemId;
             changedAccounts = true;

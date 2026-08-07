@@ -120,6 +120,7 @@ test("host account starts on Inn island with a prepared rainbow house", () => {
     assert.equal(account.inventory.includes(itemId), true);
   }
   assert.equal(account.equipped.clothes, "wings");
+  assert.equal(account.equipped.tail, "moon-tail");
   assert.equal(account.equipped.trail, "rainbow-trail");
   assert.equal(account.equipped.pet, "cat-pet");
   assert.equal(account.rocketPaint, HOST_DEFAULT_ROCKET_PAINT);
