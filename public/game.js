@@ -1375,6 +1375,17 @@ function createRocketMesh(owner) {
     eye.name = "rocketEye";
     group.add(eye);
   });
+  const mouthPoints = [
+    new THREE.Vector3(-0.11, 2.43, 0.775),
+    new THREE.Vector3(0, 2.36, 0.785),
+    new THREE.Vector3(0.11, 2.43, 0.775)
+  ];
+  const mouth = new THREE.Mesh(
+    new THREE.TubeGeometry(new THREE.CatmullRomCurve3(mouthPoints), 16, 0.012, 6, false),
+    new THREE.MeshBasicMaterial({ color: 0x1f2630 })
+  );
+  mouth.name = "rocketMouth";
+  group.add(mouth);
   group.userData.owner = owner;
   return group;
 }
@@ -1396,8 +1407,8 @@ function updateRocketPaint(group, paintId, isHost) {
       const material = new THREE.MeshStandardMaterial({ color: look.body, roughness: 0.5 });
       const ear = new THREE.Mesh(new THREE.ConeGeometry(0.19, 0.42, 4), material);
       ear.name = "hostRocketEar";
-      ear.position.set(x, 4.42, 0.08);
-      ear.rotation.set(0.12, Math.PI / 4, x < 0 ? -0.24 : 0.24);
+      ear.position.set(x, 4.34, 0.1);
+      ear.rotation.set(Math.PI + 0.18, Math.PI / 4, x < 0 ? 0.28 : -0.28);
       earGroup.add(ear);
     });
     group.add(earGroup);

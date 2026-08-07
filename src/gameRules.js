@@ -407,7 +407,8 @@ export const CONSUMABLE_ITEMS = [
   { id: "star-popper", name: "星星爆竹", type: "consumable", effect: "star-popper", price: 120 },
   { id: "bubble-fountain", name: "泡泡噴泉", type: "consumable", effect: "bubble-fountain", price: 140 },
   { id: "moon-flower", name: "月光花", type: "consumable", effect: "moon-flower", price: 160 },
-  { id: "confetti-cannon", name: "彩紙砲", type: "consumable", effect: "confetti-cannon", price: 130 }
+  { id: "confetti-cannon", name: "彩紙砲", type: "consumable", effect: "confetti-cannon", price: 130 },
+  { id: "fur-change-ticket", name: "毛色更改卷", type: "consumable", effect: "fur-change", price: 260 }
 ];
 
 export const SHOP_ITEMS = [

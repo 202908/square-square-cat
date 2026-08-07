@@ -274,6 +274,10 @@ test("consumables can be bought more than once and used one at a time", () => {
   assert.equal(used.ok, true);
   assert.equal(used.text, "Hello");
   assert.equal(used.account.inventory.filter((item) => item === "word-firework").length, 1);
+  const furTicket = useConsumable(createAccount("fur", { inventory: ["fur-change-ticket"] }), "fur-change-ticket");
+  assert.equal(furTicket.ok, true);
+  assert.equal(furTicket.effect, "fur-change");
+  assert.equal(furTicket.account.inventory.includes("fur-change-ticket"), false);
 });
 
 test("some fancy shop items can be bought with diamonds", () => {

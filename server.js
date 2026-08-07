@@ -6,6 +6,7 @@ import { existsSync, createReadStream } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  CAT_VARIANTS,
   DEFAULT_COIN_CODES,
   DEFAULT_TITLE_ID,
   DEFAULT_TITLES,
@@ -2252,6 +2253,20 @@ function handleUseConsumable(socket, session, itemId, text) {
     return;
   }
   session.account = result.account;
+  if (result.effect === "fur-change") {
+    if (session.account.isHost) {
+      persistSessionAccount(session);
+      sendAccount(socket, session.account);
+      send(socket, "notice", { message: "主機貓是專屬外觀，毛色不會被更改卷改掉。" });
+      return;
+    }
+    const choices = CAT_VARIANTS.filter((variant) => variant !== session.account.catVariant);
+    session.account.catVariant = choices[Math.floor(Math.random() * choices.length)] || CAT_VARIANTS[0];
+    persistSessionAccount(session);
+    sendAccount(socket, session.account);
+    send(socket, "notice", { message: "毛色更改成功，新的毛色已永久保存。" });
+    return;
+  }
   persistSessionAccount(session);
   const effect = {
     id: makeId(),
