@@ -811,13 +811,14 @@ function addSwing(x, y, z) {
   }
 
   swingSeatGroup = new THREE.Group();
+  swingSeatGroup.position.y = 7.2;
   for (const sx of [-2.2, 2.2]) {
     const rope = new THREE.Mesh(new THREE.BoxGeometry(0.16, 4.8, 0.16), ropeMaterial);
-    rope.position.set(sx, 4.7, 0);
+    rope.position.set(sx, -2.4, 0);
     swingSeatGroup.add(rope);
   }
   const seat = new THREE.Mesh(new THREE.BoxGeometry(5.4, 0.45, 2.1), seatMaterial);
-  seat.position.set(0, 2.1, 0);
+  seat.position.set(0, -5.1, 0);
   swingSeatGroup.add(seat);
   group.add(swingSeatGroup);
 
@@ -1846,7 +1847,7 @@ function makePlant(material) {
 
 function updateSwingMesh(swing) {
   if (!swingSeatGroup || !swing) return;
-  swingSeatGroup.rotation.z = swing.angle || 0;
+  swingSeatGroup.rotation.x = swing.angle || 0;
 }
 
 function updateFerrisMesh(ferris) {
@@ -2642,18 +2643,24 @@ function drawFlatSwing(ctx, view, x) {
   ctx.lineTo(sx + 46, sy);
   ctx.stroke();
   const angle = Number(state.flatWorld.swing?.angle || 0);
-  const seatX = sx + Math.sin(angle) * 28;
-  const seatY = sy - 25 + Math.abs(Math.sin(angle)) * 10;
+  const depth = Math.sin(angle);
+  const seatX = sx;
+  const seatY = sy - 25 + Math.abs(depth) * 11;
+  const seatWidth = 48 * (1 + depth * 0.08);
   ctx.strokeStyle = "#f7f0ff";
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(sx - 16, sy - 70);
-  ctx.lineTo(seatX - 18, seatY);
+  ctx.lineTo(seatX - seatWidth * 0.38, seatY);
   ctx.moveTo(sx + 16, sy - 70);
-  ctx.lineTo(seatX + 18, seatY);
+  ctx.lineTo(seatX + seatWidth * 0.38, seatY);
   ctx.stroke();
+  ctx.fillStyle = `rgba(65, 77, 95, ${0.16 + Math.abs(depth) * 0.08})`;
+  ctx.beginPath();
+  ctx.ellipse(seatX, sy + 5, 34 + Math.abs(depth) * 8, 7, 0, 0, Math.PI * 2);
+  ctx.fill();
   ctx.fillStyle = "#ffc5dc";
-  ctx.fillRect(seatX - 24, seatY, 48, 8);
+  ctx.fillRect(seatX - seatWidth / 2, seatY, seatWidth, 8);
 }
 
 function drawFlatFerris(ctx, view, ferris) {
@@ -2669,12 +2676,14 @@ function drawFlatFerris(ctx, view, ferris) {
   ctx.lineWidth = 3;
   for (let i = 0; i < 8; i += 1) {
     const a = angle + (i * Math.PI * 2) / 8;
+    const spokeX = sx + Math.sin(a) * 56;
+    const spokeY = sy + Math.cos(a) * 56;
     ctx.beginPath();
     ctx.moveTo(sx, sy);
-    ctx.lineTo(sx + Math.cos(a) * 56, sy + Math.sin(a) * 56);
+    ctx.lineTo(spokeX, spokeY);
     ctx.stroke();
     ctx.fillStyle = "#ffc5dc";
-    ctx.fillRect(sx + Math.cos(a) * 56 - 10, sy + Math.sin(a) * 56 - 8, 20, 16);
+    ctx.fillRect(spokeX - 10, spokeY - 8, 20, 16);
   }
   ctx.fillStyle = "#fff1a8";
   ctx.beginPath();

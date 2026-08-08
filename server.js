@@ -1361,11 +1361,11 @@ function updateSwing(dt) {
 
 function updateSwingRider(session) {
   const index = Math.max(0, SWING.riders.indexOf(session.id));
-  const offsetZ = (index - (SWING.riders.length - 1) / 2) * 0.9;
+  const offsetX = (index - (SWING.riders.length - 1) / 2) * 0.9;
   const radius = 4.8;
-  session.player.x = SWING.x + Math.sin(SWING.angle) * radius;
+  session.player.x = SWING.x + offsetX;
   session.player.y = SWING.y + Math.cos(SWING.angle) * -radius + 4.8;
-  session.player.z = SWING.z + offsetZ;
+  session.player.z = SWING.z + Math.sin(SWING.angle) * radius;
   session.player.vx = 0;
   session.player.vy = 0;
   session.player.vz = 0;
