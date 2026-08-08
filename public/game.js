@@ -37,6 +37,8 @@ const state = {
   totalAccounts: 0,
   cameraYaw: 0,
   cameraPitch: 0.08,
+  cameraNeedsHomeView: true,
+  viewedIsland: null,
   cameraDrag: { active: false, pointerId: null, x: 0, y: 0 },
   keys: new Set(),
   joystick: { active: false, x: 0, z: 0 },
@@ -262,7 +264,7 @@ function bindUi() {
     const me = state.players.get(state.myId);
     send(me?.ride === "swing" ? "swingDismount" : "swingMount");
   });
-  els.swingPumpButton.addEventListener("click", () => send("swingPump"));
+  holdRepeatingButton(els.swingPumpButton, () => send("swingPump"), 120);
   els.ferrisRideButton.addEventListener("click", () => {
     const me = state.players.get(state.myId);
     send(me?.ride === "ferris" ? "ferrisExit" : "ferrisRide");
@@ -414,6 +416,9 @@ function updateConnectionUi(isConnected, message = "") {
 
 function handleAuthed(message) {
   state.myId = message.id;
+  state.cameraYaw = Math.PI;
+  state.cameraNeedsHomeView = true;
+  state.viewedIsland = null;
   updateAccount(message);
   renderChat(message.chatLog || []);
   showScreen("game");
@@ -950,6 +955,12 @@ function updateWorldState(message) {
     updateCatMesh(state.meshes.get(player.id), player);
   });
   const me = state.players.get(state.myId);
+  const currentIsland = message.island || state.account?.currentIsland || "A";
+  if (state.viewedIsland !== currentIsland) {
+    state.viewedIsland = currentIsland;
+    state.cameraNeedsHomeView = true;
+  }
+  pointCameraAtHomeOnce(me, houses);
   updateCoinMeshes(coins);
   updateSurvivalPickupMeshes(message.survivalPickups || []);
   updateHazardMeshes(message.survivalHazards || [], me);
@@ -982,6 +993,17 @@ function updateTeamStatus(me) {
   els.teamStatus.classList.toggle("hidden", !names.length);
 }
 
+function pointCameraAtHomeOnce(me, houses) {
+  if (!state.cameraNeedsHomeView || !me || me.location !== "island") return;
+  const house = (houses || []).find((candidate) => candidate.owner === state.account?.code);
+  if (house) {
+    state.cameraYaw = Math.atan2(house.x - me.x, house.z - me.z);
+  } else {
+    state.cameraYaw = Math.PI;
+  }
+  state.cameraNeedsHomeView = false;
+}
+
 function updateSurvivalHud(me) {
   els.survivalHud.classList.add("hidden");
 }
@@ -998,7 +1020,7 @@ function updateActionButtons(me, houses, rockets = [], bushes = [], hazards = []
   const nearSwing = Math.hypot(12 - me.x, -28 - me.z) < 7;
   const ferris = state.ferris;
   const nearFerris = me.location === "island" && ferris && (is2DMode() ? Math.abs((ferris.x ?? -38) - me.x) < 15 : Math.hypot(ferris.x - me.x, ferris.z - me.z) < 13);
-  const controlsFerris = state.account?.code && ferris?.richestCode === state.account.code;
+  const controlsFerris = Boolean(state.account?.isHost || (state.account?.code && ferris?.richestCode === state.account.code));
   const canUseFerrisCenter = controlsFerris || me.ride === "ferrisCenter" || ferris?.platformGuests?.includes(state.myId);
   const nearSlideTop = (me.location === "island" && (is2DMode() ? Math.abs(me.x + 28) < 6.5 : Math.hypot(me.x + 28, me.z + 20) < 5.5) && me.y > 4.6)
     || (me.location === "room" && Boolean(nearestRoomSlideTop(me)));
@@ -3177,6 +3199,24 @@ function holdButton(button, down, up) {
   });
   button.addEventListener("pointerup", up);
   button.addEventListener("pointercancel", up);
+}
+
+function holdRepeatingButton(button, action, intervalMs = 120) {
+  let timer = null;
+  const stop = () => {
+    if (timer) clearInterval(timer);
+    timer = null;
+  };
+  button.addEventListener("pointerdown", (event) => {
+    if (button.disabled || button.classList.contains("hidden")) return;
+    button.setPointerCapture(event.pointerId);
+    action();
+    stop();
+    timer = setInterval(action, intervalMs);
+  });
+  button.addEventListener("pointerup", stop);
+  button.addEventListener("pointercancel", stop);
+  button.addEventListener("lostpointercapture", stop);
 }
 
 function showCoinModal() {

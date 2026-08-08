@@ -1027,6 +1027,29 @@ export function richestDiamondAccountCode(accounts = []) {
   return ranked[0]?.code || null;
 }
 
+export function richestIslandDiamondAccountCode(accounts = [], island = "A") {
+  const targetIsland = normalizeIslandCode(island);
+  return richestDiamondAccountCode(accounts.filter((account) => (
+    account && !account.isHost && normalizeIslandCode(account.currentIsland || account.house?.island || "A") === targetIsland
+  )));
+}
+
+export function accountWealthScore(account) {
+  return Number(account?.coins || 0) + Number(account?.diamonds || 0) * 10;
+}
+
+export function richestIslandWealthAccountCode(accounts = [], island = "A") {
+  const targetIsland = normalizeIslandCode(island);
+  const ranked = accounts
+    .filter((account) => account?.code && !account.isHost && normalizeIslandCode(account.currentIsland || account.house?.island || "A") === targetIsland)
+    .map((account) => ({
+      code: account.code,
+      wealth: accountWealthScore(account)
+    }))
+    .sort((a, b) => b.wealth - a.wealth || String(a.code).localeCompare(String(b.code)));
+  return ranked[0]?.code || null;
+}
+
 export function updateSurvivalStats(account, seconds = 0) {
   const nextAccount = structuredClone(account);
   nextAccount.hunger = clampPercent(nextAccount.hunger ?? 100);

@@ -23,6 +23,7 @@ import {
   SHOP_ITEMS,
   WEATHER_MODES,
   addFriend,
+  accountWealthScore,
   applyHousePaint,
   areHouseFriends,
   buyItem,
@@ -40,6 +41,8 @@ import {
   updateSurvivalStats,
   damageMonster,
   richestDiamondAccountCode,
+  richestIslandDiamondAccountCode,
+  richestIslandWealthAccountCode,
   rocketParkingSpot,
   isValidNewAccountCode,
   makeGuestAccount,
@@ -505,6 +508,26 @@ test("richest diamond account uses diamonds and breaks ties by code", () => {
   const c = createAccount("ccc", { diamonds: 12 });
 
   assert.equal(richestDiamondAccountCode([a, b, c]), "bbb");
+});
+
+test("richest island diamond account ignores host and other islands", () => {
+  const host = createAccount("host", { isHost: true, diamonds: 999999999, currentIsland: "A" });
+  const islandA = createAccount("aaa", { diamonds: 20, currentIsland: "A" });
+  const richerAway = createAccount("bbb", { diamonds: 90, currentIsland: "B" });
+  const islandAWinner = createAccount("ccc", { diamonds: 25, currentIsland: "A" });
+
+  assert.equal(richestIslandDiamondAccountCode([host, islandA, richerAway, islandAWinner], "A"), "ccc");
+  assert.equal(richestIslandDiamondAccountCode([host, islandA, richerAway, islandAWinner], "B"), "bbb");
+});
+
+test("richest island wealth counts each diamond as ten coins", () => {
+  const host = createAccount("host", { isHost: true, coins: 999999999, diamonds: 999999999, currentIsland: "A" });
+  const coinRich = createAccount("coins", { coins: 100, diamonds: 0, currentIsland: "A" });
+  const diamondRich = createAccount("diamonds", { coins: 50, diamonds: 6, currentIsland: "A" });
+  const otherIsland = createAccount("away", { coins: 999, diamonds: 999, currentIsland: "B" });
+
+  assert.equal(accountWealthScore(diamondRich), 110);
+  assert.equal(richestIslandWealthAccountCode([host, coinRich, diamondRich, otherIsland], "A"), "diamonds");
 });
 
 test("survival stats no longer drain for adult or child modes", () => {

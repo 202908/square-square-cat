@@ -53,7 +53,7 @@ import {
   normalizeIslandCode,
   normalizeWeatherMode,
   redeemCode,
-  richestDiamondAccountCode,
+  richestIslandWealthAccountCode,
   rocketParkingSpot,
   roomFurniturePlatforms,
   roomFurniturePlacement,
@@ -711,16 +711,15 @@ function tickWorld() {
   for (const session of sessions.values()) {
     updatePlayer(session, 1 / TICK_RATE);
   }
-  const richestCode = richestDiamondAccountCode([...sessions.values()].map((session) => session.account));
   for (const session of sessions.values()) {
-    send(session.socket, "state", buildStateForSession(session, richestCode));
+    send(session.socket, "state", buildStateForSession(session));
   }
 }
 
-function buildStateForSession(viewer, richestCode) {
+function buildStateForSession(viewer) {
   const island = normalizeIslandCode(viewer.player.island || viewer.account.currentIsland || "A");
   return {
-    coins: worldCoins,
+    coins: coinsForSession(viewer),
     effects: activeEffects.filter((effect) => effectVisibleToSession(viewer, effect)),
     survivalPickups: [],
     survivalHazards: [],
@@ -734,7 +733,7 @@ function buildStateForSession(viewer, richestCode) {
     swing: SWING,
     ferris: {
       ...FERRIS,
-      richestCode,
+      richestCode: ferrisControllerCodeForIsland(island),
       platformGuests: FERRIS.platformGuests.filter((id) => sessions.has(id))
     },
     houses: visibleHousesForIsland(island),
@@ -770,6 +769,11 @@ function buildStateForSession(viewer, richestCode) {
       diamonds: session.account.diamonds
     }))
   };
+}
+
+function coinsForSession(session) {
+  if (!session.account.prefers2D) return worldCoins;
+  return worldCoins.filter((_, index) => index % 3 === 0);
 }
 
 function visibleHousesForIsland(island) {
@@ -1164,7 +1168,9 @@ function handleAttack(session) {
   target.player.hitUntil = Date.now() + 650;
   target.player.x += (dx / distance) * 1.8;
   target.player.z += (dz / distance) * 1.8;
-  target.player.vy = 7.5;
+  const floorY = floorHeightAt(target.player.x, target.player.y, target.player.z, Boolean(target.account.prefers2D));
+  if (target.player.y < floorY) target.player.y = floorY;
+  target.player.vy = 6.2;
   target.player.onGround = false;
   const damageResult = damageAdultThirst(target.account, 18);
   target.account = damageResult.account;
@@ -1348,15 +1354,17 @@ function handleSwingDismount(socket, session) {
 
 function handleSwingPump(session) {
   if (session.player.ride !== "swing") return;
-  const direction = SWING.angle >= 0 ? 1 : -1;
-  SWING.velocity += 0.12 * direction;
+  const direction = Math.abs(SWING.velocity) > 0.03 ? Math.sign(SWING.velocity) : (SWING.angle >= 0 ? 1 : -1);
+  SWING.velocity += 0.18 * direction;
 }
 
 function updateSwing(dt) {
   SWING.velocity += -Math.sin(SWING.angle) * 2.3 * dt;
-  SWING.velocity *= 0.992;
+  SWING.velocity = clamp(SWING.velocity * 0.992, -8.5, 8.5);
   SWING.angle += SWING.velocity * dt;
-  SWING.angle = clamp(SWING.angle, -Math.PI * 1.25, Math.PI * 1.25);
+  if (Math.abs(SWING.angle) > Math.PI * 8) {
+    SWING.angle %= Math.PI * 2;
+  }
 }
 
 function updateSwingRider(session) {
@@ -1365,7 +1373,7 @@ function updateSwingRider(session) {
   const radius = 4.8;
   session.player.x = SWING.x + offsetX;
   session.player.y = SWING.y + Math.cos(SWING.angle) * -radius + 4.8;
-  session.player.z = SWING.z + Math.sin(SWING.angle) * radius;
+  session.player.z = SWING.z - Math.sin(SWING.angle) * radius;
   session.player.vx = 0;
   session.player.vy = 0;
   session.player.vz = 0;
@@ -1404,7 +1412,7 @@ function stopFollowingFlight(session) {
 }
 
 function updateFerris(dt) {
-  FERRIS.angle = (FERRIS.angle + dt * 0.32) % (Math.PI * 2);
+  FERRIS.angle = (FERRIS.angle - dt * 0.32) % (Math.PI * 2);
   FERRIS.platformGuests = FERRIS.platformGuests.filter((id) => sessions.has(id));
 }
 
@@ -1436,12 +1444,19 @@ function isNearFerris(player, flatMode = false) {
   );
 }
 
-function ferrisRichestCode() {
-  return richestDiamondAccountCode([...sessions.values()].map((candidate) => candidate.account));
+function ferrisControllerCodeForIsland(island) {
+  const targetIsland = normalizeIslandCode(island);
+  return richestIslandWealthAccountCode([...sessions.values()]
+    .filter((candidate) => candidate.player.location === "island" && normalizeIslandCode(candidate.player.island || candidate.account.currentIsland || "A") === targetIsland)
+    .map((candidate) => ({
+      ...candidate.account,
+      currentIsland: targetIsland
+    })), targetIsland);
 }
 
 function canControlFerrisCenter(session) {
-  return session.account.code === ferrisRichestCode();
+  if (session.account.isHost) return true;
+  return session.account.code === ferrisControllerCodeForIsland(session.player.island || session.account.currentIsland || "A");
 }
 
 function handleFerrisRide(socket, session) {
@@ -1488,7 +1503,7 @@ function handleFerrisCenterEnter(socket, session) {
     return;
   }
   if (!canControlFerrisCenter(session) && !invited) {
-    send(socket, "notice", { message: "只有鑽石最多的人，或被邀請的人可以上中心平台。" });
+    send(socket, "notice", { message: "只有主機、這座島最富有的人，或被邀請的人可以上中心平台。" });
     return;
   }
   detachFromStack(session.player);
@@ -1518,10 +1533,15 @@ function updateFerrisCenterRider(session) {
 
 function handleFerrisCenterInvite(socket, session) {
   if (!canControlFerrisCenter(session)) {
-    send(socket, "notice", { message: "只有目前鑽石最多的人可以邀請大家上中心平台。" });
+    send(socket, "notice", { message: "只有主機或這座島最富有的人可以邀請大家上中心平台。" });
     return;
   }
-  const invited = [...sessions.values()].filter((candidate) => candidate.id !== session.id && candidate.player.location === "island");
+  const island = normalizeIslandCode(session.player.island || session.account.currentIsland || "A");
+  const invited = [...sessions.values()].filter((candidate) => (
+    candidate.id !== session.id &&
+    candidate.player.location === "island" &&
+    normalizeIslandCode(candidate.player.island || candidate.account.currentIsland || "A") === island
+  ));
   for (const candidate of invited) {
     send(candidate.socket, "ferrisCenterInvite", {
       leaderId: session.id,
@@ -1547,7 +1567,7 @@ function handleAcceptFerrisCenterInvite(socket, session, leaderId) {
 
 function handleSetFerrisIcon(socket, session, icon) {
   if (!canControlFerrisCenter(session)) {
-    send(socket, "notice", { message: "只有目前鑽石最多的人可以更換摩天輪中心圖案。" });
+    send(socket, "notice", { message: "只有主機或這座島最富有的人可以更換摩天輪中心圖案。" });
     return;
   }
   const allowed = new Set(["jump-cat", "cloud-cat", "play-cats", "star-cat", "diamond-cat"]);
@@ -2664,10 +2684,13 @@ function resolveSolidBlocks(player) {
 
 function collectNearbyCoins(session) {
   if (session.account.isHost) return;
-  for (const coin of worldCoins) {
+  for (const [index, coin] of worldCoins.entries()) {
     if (coin.taken) continue;
-    const distance = Math.hypot(session.player.x - coin.x, session.player.z - coin.z);
-    if (distance < 1.8 && Math.abs(session.player.y - coin.y) < 3) {
+    const flatMode = Boolean(session.account.prefers2D);
+    if (flatMode && index % 3 !== 0) continue;
+    const distance = flatMode ? Math.abs(session.player.x - coin.x) : Math.hypot(session.player.x - coin.x, session.player.z - coin.z);
+    const reach = flatMode ? 2.4 : 1.8;
+    if (distance < reach && Math.abs(session.player.y - coin.y) < 3) {
       coin.taken = true;
       session.account.coins += 1;
       incrementAchievement(session, "coinsCollected");
