@@ -12,6 +12,9 @@ const state = {
   weatherLabels: { auto: "晴天/日夜", rain: "下雨", thunder: "打雷", rainbow: "彩虹", aurora: "極光" },
   islandCodes: [..."ABCDEFGHIJKLMNOPQRSTUVWXYZ"],
   hostIslandCode: "Inn",
+  freeIslandCodes: [..."ABCDEFGHIJK"],
+  rocketMaxLevel: 5,
+  rocketUpgradeCosts: [0, 300, 700, 1200, 1800],
   coinCodes: {},
   titleCatalog: {},
   titleColors: {},
@@ -419,6 +422,9 @@ function updateAccount(message) {
   state.weatherLabels = message.weatherLabels || state.weatherLabels;
   state.islandCodes = message.islandCodes || state.islandCodes;
   state.hostIslandCode = message.hostIslandCode || state.hostIslandCode;
+  state.freeIslandCodes = message.freeIslandCodes || state.freeIslandCodes;
+  state.rocketMaxLevel = message.rocketMaxLevel || state.rocketMaxLevel;
+  state.rocketUpgradeCosts = message.rocketUpgradeCosts || state.rocketUpgradeCosts;
   state.coinCodes = message.coinCodes || state.coinCodes;
   state.titleCatalog = message.titleCatalog || state.titleCatalog;
   state.titleColors = message.titleColors || state.titleColors;
@@ -445,6 +451,9 @@ function updateAccount(message) {
   if (!els.modal.classList.contains("hidden") && els.modalTitle.textContent === "新增 Password") {
     showAdminModal();
   }
+  if (!els.modal.classList.contains("hidden") && els.modalTitle.textContent === "小貓火箭") {
+    showRocketModal();
+  }
 }
 
 function clientCanFly(account) {
@@ -465,7 +474,17 @@ function renderIslandSelect(currentIsland = "A") {
 }
 
 function islandLabel(island) {
-  return island === (state.hostIslandCode || "Inn") ? "Inn島" : `${island}島`;
+  if (island === (state.hostIslandCode || "Inn")) return "Inn島";
+  const required = rocketLevelRequiredForIsland(island);
+  return required <= 0 ? `${island}島 免費` : `${island}島 火箭${required}階`;
+}
+
+function rocketLevelRequiredForIsland(island) {
+  if ((state.freeIslandCodes || []).includes(island)) return 0;
+  const index = (state.islandCodes || []).indexOf(island);
+  const freeCount = (state.freeIslandCodes || []).length || 11;
+  if (index < freeCount) return 0;
+  return Math.ceil((index - freeCount + 1) / 3);
 }
 
 function initThree() {
@@ -876,6 +895,7 @@ function updateWorldState(message) {
   state.weather = message.weather || state.weather;
   state.islandCodes = message.islandCodes || state.islandCodes;
   state.hostIslandCode = message.hostIslandCode || state.hostIslandCode;
+  state.freeIslandCodes = message.freeIslandCodes || state.freeIslandCodes;
   state.ferris = ferris || state.ferris;
   state.flatWorld = { coins, houses, rockets, bushes, swing, ferris: state.ferris, effects };
   state.totalAccounts = Number(message.totalAccounts || state.totalAccounts || 0);
@@ -917,8 +937,8 @@ function updateWorldState(message) {
     showAdminModal();
   }
   els.enterHouseButton.textContent = me?.location === "room" ? "離開" : "進入";
-  els.rocketButton.textContent = me?.location === "rocket" ? "離開火箭" : "進火箭";
-  els.islandSelect.classList.toggle("hidden", me?.location !== "rocket");
+  els.rocketButton.textContent = me?.location === "rocket" ? "離開火箭" : "進自己的火箭";
+  els.islandSelect.classList.toggle("hidden", !(me?.location === "rocket" || me?.location === "island"));
   els.swingButton.textContent = me?.ride === "swing" ? "下鞦韆" : "上鞦韆";
   updateTeamStatus(me);
   updateSurvivalHud(me);
@@ -3364,7 +3384,7 @@ function showBagModal() {
     button.addEventListener("click", () => send("useRocketPaint", { itemId: button.dataset.useRocketPaint }));
   });
   document.querySelectorAll("[data-place-rocket]").forEach((button) => {
-    button.addEventListener("click", () => send("placeRocket"));
+    button.addEventListener("click", showRocketModal);
   });
 }
 
@@ -3404,6 +3424,30 @@ function bagActionButton(item) {
   if (item.type === "rocket-paint") return `<button data-use-rocket-paint="${item.id}">使用噴漆</button>`;
   if (item.type === "consumable") return `<button data-use-consumable="${item.id}" class="primary-button">使用</button>`;
   return `<button data-equip="${item.id}">${state.account.equipped[item.slot] === item.id ? "卸下" : "裝備"}</button>`;
+}
+
+function showRocketModal() {
+  const level = Number(state.account?.rocketLevel || 1);
+  const maxLevel = Number(state.rocketMaxLevel || 5);
+  const nextCost = state.rocketUpgradeCosts?.[level] || 0;
+  const unlocked = (state.islandCodes || []).filter((island) => rocketLevelRequiredForIsland(island) <= level);
+  openModal("小貓火箭", `
+    <div class="list">
+      <div class="list-item">
+        <div class="split">
+          <strong>目前階級</strong>
+          <span>${level} / ${maxLevel}</span>
+        </div>
+        <small>可去：${unlocked.map((island) => `${island}島`).join("、")}</small>
+      </div>
+      <div class="row">
+        <button id="showRocketPlaceButton">查看火箭位置</button>
+        ${level < maxLevel ? `<button id="upgradeRocketButton" class="primary-button">升級火箭 ${nextCost} 金幣</button>` : "<button disabled>已滿階</button>"}
+      </div>
+    </div>
+  `);
+  document.querySelector("#showRocketPlaceButton").addEventListener("click", () => send("placeRocket"));
+  document.querySelector("#upgradeRocketButton")?.addEventListener("click", () => send("upgradeRocket"));
 }
 
 function showFriendsModal() {

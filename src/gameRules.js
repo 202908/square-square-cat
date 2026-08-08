@@ -21,6 +21,9 @@ export const ROOM_BOUNDS = {
 export const SURVIVAL_DRAIN_PER_SECOND = { hunger: 0.18, thirst: 0.24 };
 export const WEATHER_MODES = ["auto", "rain", "thunder", "rainbow", "aurora"];
 export const ISLAND_CODES = [..."ABCDEFGHIJKLMNOPQRSTUVWXYZ"];
+export const FREE_ISLAND_CODES = ISLAND_CODES.slice(0, 11);
+export const ROCKET_MAX_LEVEL = 5;
+export const ROCKET_UPGRADE_COSTS = [0, 300, 700, 1200, 1800];
 export const HOST_ISLAND_CODE = "Inn";
 export const HOST_DEFAULT_ROCKET_PAINT = "pink";
 export const HOST_DEFAULT_INVENTORY = ["cat-house", "rocket", "wings", "rainbow-trail", "cat-pet", "moon-tail"];
@@ -567,7 +570,36 @@ export function canTravelToIsland(account, rawIsland, invited = false) {
   if (invited) return true;
   if (account.isHost) return true;
   if (island === HOST_ISLAND_CODE) return Boolean(account.isHost);
-  return Boolean(account.inventory?.includes("rocket"));
+  if (FREE_ISLAND_CODES.includes(island)) return true;
+  if (!account.inventory?.includes("rocket")) return false;
+  return rocketLevelCanReachIsland(account.rocketLevel || 1, island);
+}
+
+export function rocketLevelCanReachIsland(level, rawIsland) {
+  const island = normalizeIslandCode(rawIsland);
+  if (FREE_ISLAND_CODES.includes(island)) return true;
+  const index = ISLAND_CODES.indexOf(island);
+  if (index < FREE_ISLAND_CODES.length) return true;
+  const requiredLevel = Math.ceil((index - FREE_ISLAND_CODES.length + 1) / 3);
+  return Math.max(1, Math.min(ROCKET_MAX_LEVEL, Number(level || 1))) >= requiredLevel;
+}
+
+export function upgradeRocket(account) {
+  if (!account.inventory?.includes("rocket")) {
+    return { ok: false, message: "你要先有火箭才能升級。" };
+  }
+  const currentLevel = Math.max(1, Math.min(ROCKET_MAX_LEVEL, Number(account.rocketLevel || 1)));
+  if (currentLevel >= ROCKET_MAX_LEVEL) {
+    return { ok: false, message: "火箭已經升到最高 5 階了。" };
+  }
+  const cost = ROCKET_UPGRADE_COSTS[currentLevel] || 0;
+  if (!account.isHost && Number(account.coins || 0) < cost) {
+    return { ok: false, message: `金幣不夠，升到 ${currentLevel + 1} 階需要 ${cost} 金幣。` };
+  }
+  const nextAccount = structuredClone(account);
+  nextAccount.rocketLevel = currentLevel + 1;
+  if (!nextAccount.isHost) nextAccount.coins -= cost;
+  return { ok: true, account: nextAccount, message: `火箭升到 ${nextAccount.rocketLevel} 階。` };
 }
 
 export function rocketParkingSpot(account) {
@@ -610,6 +642,7 @@ export function createAccount(code, overrides = {}) {
     roomItems: isHost ? createHostDefaultRoomItems() : [],
     currentIsland: isHost ? HOST_ISLAND_CODE : "A",
     rocketPaint: isHost ? HOST_DEFAULT_ROCKET_PAINT : "classic",
+    rocketLevel: isHost ? ROCKET_MAX_LEVEL : 1,
     giftInbox: [],
     redeemedCodes: [],
     claimedLevelRewards: [],
@@ -695,6 +728,7 @@ export function buyItem(account, itemId) {
     nextAccount.coins -= item.price;
   }
   nextAccount.inventory.push(itemId);
+  if (item.type === "rocket") nextAccount.rocketLevel ||= 1;
   return { ok: true, account: nextAccount, message: `買到 ${item.name}。` };
 }
 

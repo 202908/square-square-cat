@@ -5,6 +5,7 @@ import {
   DEFAULT_TITLE_ID,
   DEFAULT_TITLES,
   FURNITURE_ITEMS,
+  FREE_ISLAND_CODES,
   HOST_DEFAULT_HOUSE,
   HOST_DEFAULT_INVENTORY,
   HOST_DEFAULT_ROCKET_PAINT,
@@ -17,6 +18,7 @@ import {
   MAX_PLAYER_LEVEL,
   REMOVED_ITEM_IDS,
   ROOM_BOUNDS,
+  ROCKET_MAX_LEVEL,
   SHOP_ITEMS,
   WEATHER_MODES,
   addFriend,
@@ -45,8 +47,10 @@ import {
   roomFurniturePlatforms,
   roomFurniturePlacement,
   redeemCode,
+  rocketLevelCanReachIsland,
   sendCoinGift,
   sendDiamondGift,
+  upgradeRocket,
   useRocketPaint,
   useConsumable
 } from "../src/gameRules.js";
@@ -208,10 +212,17 @@ test("shop includes house body and roof paint", () => {
 
 test("rocket travel requires a rocket unless the player is invited", () => {
   const account = createAccount("abc", { currentIsland: "A" });
-  assert.equal(canTravelToIsland(account, "B"), false);
-  assert.equal(canTravelToIsland(account, "B", true), true);
-  assert.equal(canTravelToIsland({ ...account, inventory: ["rocket"] }, "B"), true);
+  assert.deepEqual(FREE_ISLAND_CODES, ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"]);
+  assert.equal(canTravelToIsland(account, "K"), true);
+  assert.equal(canTravelToIsland(account, "L"), false);
+  assert.equal(canTravelToIsland(account, "L", true), true);
+  assert.equal(canTravelToIsland({ ...account, inventory: ["rocket"], rocketLevel: 1 }, "L"), true);
+  assert.equal(canTravelToIsland({ ...account, inventory: ["rocket"], rocketLevel: 1 }, "Z"), false);
+  assert.equal(canTravelToIsland({ ...account, inventory: ["rocket"], rocketLevel: 5 }, "Z"), true);
   assert.equal(canTravelToIsland({ ...account, inventory: ["rocket"] }, "Inn"), false);
+  assert.equal(rocketLevelCanReachIsland(1, "N"), true);
+  assert.equal(rocketLevelCanReachIsland(1, "O"), false);
+  assert.equal(rocketLevelCanReachIsland(ROCKET_MAX_LEVEL, "Z"), true);
 });
 
 test("rocket needs a house and rocket paint updates the rocket color", () => {
@@ -222,6 +233,10 @@ test("rocket needs a house and rocket paint updates the rocket color", () => {
   const rocket = buyItem(withHouse, "rocket");
   assert.equal(rocket.ok, true);
   assert.equal(rocket.account.inventory.includes("rocket"), true);
+  assert.equal(rocket.account.rocketLevel || 1, 1);
+  const upgraded = upgradeRocket({ ...rocket.account, coins: 500 });
+  assert.equal(upgraded.ok, true);
+  assert.equal(upgraded.account.rocketLevel, 2);
 
   const paint = buyItem({ ...rocket.account, coins: 500 }, "rocket-paint-pink");
   assert.equal(paint.ok, true);

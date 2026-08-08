@@ -10,6 +10,7 @@ import {
   DEFAULT_COIN_CODES,
   DEFAULT_TITLE_ID,
   DEFAULT_TITLES,
+  FREE_ISLAND_CODES,
   HOST_CODE,
   HOST_DEFAULT_HOUSE,
   HOST_DEFAULT_INVENTORY,
@@ -23,6 +24,8 @@ import {
   REMOVED_ITEM_IDS,
   ROOM_BOUNDS,
   ROOM_CENTER,
+  ROCKET_MAX_LEVEL,
+  ROCKET_UPGRADE_COSTS,
   SHOP_ITEMS,
   TITLE_COLORS,
   WEATHER_LABELS,
@@ -57,6 +60,7 @@ import {
   sendDiamondGift,
   useRocketPaint,
   useConsumable,
+  upgradeRocket,
   updateSurvivalStats,
   withAchievementDefaults
 } from "./src/gameRules.js";
@@ -284,6 +288,14 @@ async function loadData() {
         account.rocketPaint = "classic";
         changedAccounts = true;
       }
+      if (!account.rocketLevel) {
+        account.rocketLevel = account.isHost ? ROCKET_MAX_LEVEL : 1;
+        changedAccounts = true;
+      }
+      if (account.isHost && account.rocketLevel !== ROCKET_MAX_LEVEL) {
+        account.rocketLevel = ROCKET_MAX_LEVEL;
+        changedAccounts = true;
+      }
       if (account.isHost && account.rocketPaint === "classic") {
         account.rocketPaint = HOST_DEFAULT_ROCKET_PAINT;
         changedAccounts = true;
@@ -456,6 +468,9 @@ function handleMessage(socket, message) {
       break;
     case "placeRocket":
       handlePlaceRocket(socket, session);
+      break;
+    case "upgradeRocket":
+      updateAccount(socket, session, upgradeRocket(session.account));
       break;
     case "enterRocket":
       handleEnterRocket(socket, session);
@@ -716,16 +731,14 @@ function buildStateForSession(viewer, richestCode) {
       richestCode,
       platformGuests: FERRIS.platformGuests.filter((id) => sessions.has(id))
     },
-    houses: Object.values(accounts).filter((account) => account.house && normalizeIslandCode(account.house.island || "A") === island).map((account) => ({
-      owner: account.code,
-      ...account.house
-    })),
+    houses: visibleHousesForIsland(island),
     rockets: Object.values(accounts)
       .filter((account) => account.house && account.inventory?.includes("rocket") && normalizeIslandCode(account.currentIsland || account.house.island || "A") === island)
       .map((account) => ({
         owner: account.code,
         ...rocketParkingSpot(account),
         paint: account.rocketPaint || "classic",
+        level: account.rocketLevel || 1,
         isHost: account.isHost
       })),
     players: [...sessions.values()].filter((session) => playerVisibleToSession(viewer, session)).map((session) => ({
@@ -750,6 +763,31 @@ function buildStateForSession(viewer, richestCode) {
       diamonds: session.account.diamonds
     }))
   };
+}
+
+function visibleHousesForIsland(island) {
+  const visible = [];
+  for (const account of Object.values(accounts)) {
+    if (!account.house) continue;
+    if (account.isHost) {
+      for (const hostIsland of [...ISLAND_CODES, HOST_ISLAND_CODE]) {
+        if (normalizeIslandCode(hostIsland) !== island) continue;
+        visible.push({
+          owner: account.code,
+          ...account.house,
+          island: hostIsland
+        });
+      }
+      continue;
+    }
+    if (normalizeIslandCode(account.house.island || "A") === island) {
+      visible.push({
+        owner: account.code,
+        ...account.house
+      });
+    }
+  }
+  return visible;
 }
 
 function onlinePlayersForHost() {
@@ -2041,15 +2079,16 @@ function handleLeaveRocket(socket, session) {
 
 function handleTravelIsland(socket, session, rawIsland, invited = false) {
   const island = normalizeIslandCode(rawIsland);
-  if (!invited && session.player.location !== "rocket") {
-    send(socket, "notice", { message: "要先進入火箭太空艙，才能選島出發。" });
+  const freeIsland = FREE_ISLAND_CODES.includes(island);
+  if (!invited && session.player.location !== "rocket" && !freeIsland && !session.account.isHost) {
+    send(socket, "notice", { message: "L島到Z島要先進入火箭太空艙，才能選島出發。" });
     return false;
   }
   if (!canTravelToIsland(session.account, island, invited)) {
     send(socket, "notice", {
       message: island === HOST_ISLAND_CODE
         ? "Inn島只有主機或被主機邀請的人能進去。"
-        : "你需要先有房子和火箭，才能自己去別的島。"
+        : "這個島需要火箭，或需要先把火箭升到夠高的階級。"
     });
     return false;
   }
@@ -2291,10 +2330,12 @@ function nearestHouseForPlayer(player) {
   let nearest = null;
   for (const account of Object.values(accounts)) {
     if (!account.house) continue;
-    if (normalizeIslandCode(account.house.island || "A") !== normalizeIslandCode(player.island || "A")) continue;
-    const distance = Math.hypot(player.x - account.house.x, player.z - account.house.z);
+    const playerIsland = normalizeIslandCode(player.island || "A");
+    if (!account.isHost && normalizeIslandCode(account.house.island || "A") !== playerIsland) continue;
+    const house = account.isHost ? { ...account.house, island: playerIsland } : account.house;
+    const distance = Math.hypot(player.x - house.x, player.z - house.z);
     if (distance <= 6 && (!nearest || distance < nearest.distance)) {
-      nearest = { ownerCode: account.code, ownerAccount: account, house: account.house, distance };
+      nearest = { ownerCode: account.code, ownerAccount: account, house, distance };
     }
   }
   return nearest;
@@ -2335,12 +2376,22 @@ function updateAccount(socket, session, result) {
   sendAccount(socket, session.account);
 }
 
-function sendAccount(socket, account) {
-  send(socket, "account", {
+function accountPayload(account) {
+  return {
     account,
     shopItems: SHOP_ITEMS,
     islandCodes: ISLAND_CODES,
     hostIslandCode: HOST_ISLAND_CODE,
+    freeIslandCodes: FREE_ISLAND_CODES,
+    rocketMaxLevel: ROCKET_MAX_LEVEL,
+    rocketUpgradeCosts: ROCKET_UPGRADE_COSTS,
+    coinCodes: account.isHost ? coinCodes : undefined
+  };
+}
+
+function sendAccount(socket, account) {
+  send(socket, "account", {
+    ...accountPayload(account),
     levelRewards: LEVEL_REWARDS,
     levelTasks: LEVEL_TASKS,
     weather: worldWeather,
@@ -2349,8 +2400,7 @@ function sendAccount(socket, account) {
     titleCatalog,
     titleColors: TITLE_COLORS,
     titlePlayers: account.isHost ? titlePlayers() : undefined,
-    onlinePlayers: account.isHost ? onlinePlayersForHost() : undefined,
-    coinCodes: account.isHost ? coinCodes : undefined
+    onlinePlayers: account.isHost ? onlinePlayersForHost() : undefined
   });
 }
 
