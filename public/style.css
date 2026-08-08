@@ -76,6 +76,87 @@ select {
   accent-color: var(--accent-strong);
 }
 
+.gender-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  color: var(--text);
+}
+
+.gender-row > span {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.gender-choice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+}
+
+.gender-choice input {
+  width: 18px;
+  min-height: 18px;
+  flex: 0 0 auto;
+}
+
+.gender-choice-male {
+  border-color: rgba(98, 183, 255, 0.36);
+}
+
+.gender-choice-male input {
+  accent-color: #62b7ff;
+}
+
+.gender-choice-female {
+  border-color: rgba(255, 143, 203, 0.42);
+}
+
+.gender-choice-female input {
+  accent-color: #ff8fcb;
+}
+
+.gender-choice-private {
+  border-color: rgba(158, 231, 255, 0.34);
+}
+
+.gender-choice-private input {
+  accent-color: #c8a8ff;
+}
+
+.gender-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-right: 6px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1;
+  vertical-align: middle;
+  color: #061018;
+}
+
+.gender-badge-male {
+  background: #62b7ff;
+}
+
+.gender-badge-female {
+  background: #ff8fcb;
+}
+
+.gender-badge-private {
+  background: linear-gradient(135deg, #62b7ff 0 48%, #ff8fcb 52% 100%);
+}
+
 .hidden {
   display: none !important;
 }

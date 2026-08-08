@@ -20,6 +20,8 @@ const state = {
   titleColors: {},
   titlePlayers: [],
   onlinePlayers: [],
+  friendProfiles: {},
+  friendRequestProfiles: {},
   players: new Map(),
   flatWorld: { coins: [], houses: [], rockets: [], bushes: [], swing: null, ferris: null, effects: [] },
   meshes: new Map(),
@@ -59,6 +61,7 @@ const els = {
   accountCode: document.querySelector("#accountCode"),
   prefer2D: document.querySelector("#prefer2D"),
   twoDPreferenceRow: document.querySelector("#twoDPreferenceRow"),
+  genderRow: document.querySelector("#genderRow"),
   authSubmitButton: document.querySelector("#authSubmitButton"),
   authError: document.querySelector("#authError"),
   cancelAuth: document.querySelector("#cancelAuth"),
@@ -208,7 +211,10 @@ function bindUi() {
   els.authForm.addEventListener("submit", (event) => {
     event.preventDefault();
     const payload = { code: els.accountCode.value };
-    if (state.authMode === "create") payload.prefers2D = els.prefer2D.checked;
+    if (state.authMode === "create") {
+      payload.prefers2D = els.prefer2D.checked;
+      payload.gender = document.querySelector("input[name='genderChoice']:checked")?.value || "private";
+    }
     if (send(state.authMode === "create" ? "createAccount" : "login", payload)) {
       showAuthStatus("正在登入...", false);
     }
@@ -334,7 +340,9 @@ function openAuthForm(mode) {
   els.authError.classList.add("hidden");
   els.accountCode.value = "";
   els.prefer2D.checked = false;
+  document.querySelector("input[name='genderChoice'][value='private']").checked = true;
   els.twoDPreferenceRow.classList.toggle("hidden", mode !== "create");
+  els.genderRow.classList.toggle("hidden", mode !== "create");
   els.authLabel.textContent = mode === "create" ? "創建新帳號亂碼" : "輸入已有帳號亂碼";
   els.authHint.textContent = mode === "create"
     ? "新帳號請用 1 到 10 個英文字或數字。"
@@ -430,7 +438,9 @@ function updateAccount(message) {
   state.titleColors = message.titleColors || state.titleColors;
   state.titlePlayers = message.titlePlayers || state.titlePlayers;
   state.onlinePlayers = message.onlinePlayers || state.onlinePlayers;
-  els.accountName.textContent = state.account.code;
+  state.friendProfiles = profilesByCode(message.friendProfiles || []);
+  state.friendRequestProfiles = profilesByCode(message.friendRequestProfiles || []);
+  els.accountName.innerHTML = `${genderBadgeHtml(state.account.gender)}${escapeHtml(state.account.code)}`;
   els.levelText.textContent = state.account.isHost ? "主機" : `Lv. ${state.account.level}`;
   els.coinAmount.textContent = state.account.isHost ? "金幣 ∞" : `金幣 ${state.account.coins}`;
   els.diamondAmount.textContent = state.account.isHost ? "鑽石 ∞" : `鑽石 ${Number(state.account.diamonds || 0)}`;
@@ -477,6 +487,25 @@ function islandLabel(island) {
   if (island === (state.hostIslandCode || "Inn")) return "Inn島";
   const required = rocketLevelRequiredForIsland(island);
   return required <= 0 ? `${island}島 免費` : `${island}島 火箭${required}階`;
+}
+
+function profilesByCode(profiles) {
+  return Object.fromEntries((profiles || []).map((profile) => [profile.code, profile]));
+}
+
+function friendProfile(code) {
+  return state.friendProfiles?.[code] || state.friendRequestProfiles?.[code] || null;
+}
+
+function genderMeta(gender) {
+  if (gender === "male") return { symbol: "♂", className: "gender-badge-male", label: "男生" };
+  if (gender === "female") return { symbol: "♀", className: "gender-badge-female", label: "女生" };
+  return { symbol: "?", className: "gender-badge-private", label: "不透露" };
+}
+
+function genderBadgeHtml(gender) {
+  const meta = genderMeta(gender);
+  return `<span class="gender-badge ${meta.className}" title="${meta.label}" aria-label="${meta.label}">${meta.symbol}</span>`;
 }
 
 function rocketLevelRequiredForIsland(island) {
@@ -3463,7 +3492,7 @@ function showFriendsModal() {
       ${friendRequests.map((friend) => `
         <div class="list-item">
           <div class="split">
-            <strong>${escapeHtml(friend)}</strong>
+            <strong>${genderBadgeHtml(friendProfile(friend)?.gender)}${escapeHtml(friend)}</strong>
             <span>想加你為好友</span>
           </div>
           <div class="row">
@@ -3499,7 +3528,7 @@ function showFriendsModal() {
     <div class="list">
       ${(state.account.friends || []).map((friend) => `
         <div class="list-item">
-          <div class="split"><strong>${friend}</strong><button data-team-invite="${escapeHtml(friend)}">組隊</button></div>
+          <div class="split"><strong>${genderBadgeHtml(friendProfile(friend)?.gender)}${escapeHtml(friend)}</strong><button data-team-invite="${escapeHtml(friend)}">組隊</button></div>
           <div class="row">
             <button data-summon-friend="${escapeHtml(friend)}">召喚</button>
             <button data-gift-friend="${escapeHtml(friend)}">贈送</button>
@@ -3636,7 +3665,7 @@ function showOnlinePlayersModal() {
       ${onlinePlayers.map((player) => `
         <div class="list-item">
           <div class="split">
-            <strong>${escapeHtml(player.displayName || player.accountCode)}</strong>
+            <strong>${genderBadgeHtml(player.gender)}${escapeHtml(player.displayName || player.accountCode)}</strong>
             <span>${player.isHost ? "主機" : `Lv. ${player.level || 1}`}</span>
           </div>
           <small>${islandLabel(player.island || state.account.currentIsland)} · ${locationLabel(player.location)} · 金幣 ${player.isHost ? "∞" : Number(player.coins || 0)} · 鑽石 ${player.isHost ? "∞" : Number(player.diamonds || 0)}</small>

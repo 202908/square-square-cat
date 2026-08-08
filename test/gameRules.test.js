@@ -6,6 +6,7 @@ import {
   DEFAULT_TITLES,
   FURNITURE_ITEMS,
   FREE_ISLAND_CODES,
+  GENDER_OPTIONS,
   HOST_DEFAULT_HOUSE,
   HOST_DEFAULT_INVENTORY,
   HOST_DEFAULT_ROCKET_PAINT,
@@ -42,6 +43,7 @@ import {
   rocketParkingSpot,
   isValidNewAccountCode,
   makeGuestAccount,
+  normalizeGender,
   normalizeIslandCode,
   normalizeWeatherMode,
   roomFurniturePlatforms,
@@ -82,10 +84,23 @@ test("player account gets one allowed cat skin at creation", () => {
   assert.equal(CAT_VARIANTS.includes(account.catVariant), true);
   assert.equal(account.diamonds, 0);
   assert.equal(account.prefers2D, false);
+  assert.equal(account.gender, "private");
   assert.deepEqual(account.giftInbox, []);
   assert.equal(account.equipped.title, DEFAULT_TITLE_ID);
   assert.equal(account.titles.includes(DEFAULT_TITLE_ID), true);
   assert.deepEqual(DEFAULT_TITLES[DEFAULT_TITLE_ID], { id: DEFAULT_TITLE_ID, name: "新手貓貓", color: "black" });
+});
+
+test("account gender display uses fixed choices and falls back to private", () => {
+  assert.deepEqual(GENDER_OPTIONS, ["male", "female", "private"]);
+  assert.equal(normalizeGender("male"), "male");
+  assert.equal(normalizeGender("female"), "female");
+  assert.equal(normalizeGender("private"), "private");
+  assert.equal(normalizeGender("sparkle"), "private");
+  assert.equal(createAccount("boycat", { gender: "male" }).gender, "male");
+  assert.equal(createAccount("girlcat", { gender: "female" }).gender, "female");
+  assert.equal(createAccount("mystery", { gender: "nope" }).gender, "private");
+  assert.equal(makeGuestAccount().gender, "private");
 });
 
 test("player account can remember a 2D display preference", () => {
@@ -128,6 +143,7 @@ test("host account starts on Inn island with a prepared rainbow house", () => {
   assert.equal(account.equipped.trail, "rainbow-trail");
   assert.equal(account.equipped.pet, "cat-pet");
   assert.equal(account.rocketPaint, HOST_DEFAULT_ROCKET_PAINT);
+  assert.equal(account.gender, "private");
   assert.equal(account.roomItems.length, HOST_DEFAULT_ROOM_FURNITURE_IDS.length);
   assert.equal(canTravelToIsland(account, "Z"), true);
 });

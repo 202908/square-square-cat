@@ -49,6 +49,7 @@ import {
   getChallengePlatforms,
   isValidNewAccountCode,
   makeGuestAccount,
+  normalizeGender,
   normalizeIslandCode,
   normalizeWeatherMode,
   redeemCode,
@@ -320,6 +321,11 @@ async function loadData() {
       account.hunger ??= 100;
       account.thirst ??= 100;
       account.prefers2D ??= false;
+      const normalizedGender = account.isHost ? "private" : normalizeGender(account.gender);
+      if (account.gender !== normalizedGender) {
+        account.gender = normalizedGender;
+        changedAccounts = true;
+      }
       if (!Array.isArray(account.claimedLevelRewards)) {
         account.claimedLevelRewards = [];
         changedAccounts = true;
@@ -401,7 +407,7 @@ function handleMessage(socket, message) {
   const sessionId = sockets.get(socket);
   const session = sessions.get(sessionId);
 
-  if (message.type === "createAccount") return createNewAccount(socket, message.code, Boolean(message.prefers2D));
+  if (message.type === "createAccount") return createNewAccount(socket, message.code, Boolean(message.prefers2D), message.gender);
   if (message.type === "login") return loginAccount(socket, message.code, message.hostPassword);
   if (message.type === "guest") return enterWorld(socket, makeGuestAccount({ prefers2D: Boolean(message.prefers2D) }), false);
 
@@ -594,7 +600,7 @@ function handleMessage(socket, message) {
   }
 }
 
-function createNewAccount(socket, rawCode, prefers2D = false) {
+function createNewAccount(socket, rawCode, prefers2D = false, gender = "private") {
   const code = String(rawCode || "").trim();
   if (code !== HOST_CODE && !isValidNewAccountCode(code)) {
     send(socket, "authError", { message: "帳號只能是 1 到 10 個英文字或數字。" });
@@ -604,7 +610,7 @@ function createNewAccount(socket, rawCode, prefers2D = false) {
     send(socket, "authError", { message: "這個帳號已存在，請改一串亂碼。" });
     return;
   }
-  accounts[code] = createAccount(code, { prefers2D });
+  accounts[code] = createAccount(code, { prefers2D, gender: normalizeGender(gender) });
   saveAccounts();
   enterWorld(socket, accounts[code], true, { announceNewAccount: true });
 }
@@ -747,6 +753,7 @@ function buildStateForSession(viewer, richestCode) {
       displayName: displayNameFor(session.account),
       isHost: session.account.isHost,
       level: session.account.level,
+      gender: session.account.gender || "private",
       survivalMode: session.account.survivalMode,
       hunger: session.account.hunger,
       thirst: session.account.thirst,
@@ -797,6 +804,7 @@ function onlinePlayersForHost() {
     displayName: displayNameFor(session.account),
     isHost: session.account.isHost,
     level: session.account.level,
+    gender: session.account.gender || "private",
     location: session.player.location,
     island: normalizeIslandCode(session.player.island || session.account.currentIsland || "A"),
     coins: session.account.coins,
@@ -2385,8 +2393,21 @@ function accountPayload(account) {
     freeIslandCodes: FREE_ISLAND_CODES,
     rocketMaxLevel: ROCKET_MAX_LEVEL,
     rocketUpgradeCosts: ROCKET_UPGRADE_COSTS,
+    friendProfiles: profilesForCodes(account.friends || []),
+    friendRequestProfiles: profilesForCodes(account.friendRequests || []),
     coinCodes: account.isHost ? coinCodes : undefined
   };
+}
+
+function profilesForCodes(codes) {
+  return (codes || []).map((code) => {
+    const account = accounts[code];
+    if (!account) return null;
+    return {
+      code: account.code,
+      gender: account.gender || "private"
+    };
+  }).filter(Boolean);
 }
 
 function sendAccount(socket, account) {

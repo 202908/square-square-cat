@@ -36,6 +36,21 @@
             <input id="prefer2D" type="checkbox" />
             <span>玩 3D 會頭暈，使用 2D 版</span>
           </label>
+          <div id="genderRow" class="gender-row hidden" role="radiogroup" aria-label="性別顯示">
+            <span>性別顯示</span>
+            <label class="gender-choice gender-choice-male">
+              <input type="radio" name="genderChoice" value="male" />
+              <span>♂ 男生</span>
+            </label>
+            <label class="gender-choice gender-choice-female">
+              <input type="radio" name="genderChoice" value="female" />
+              <span>♀ 女生</span>
+            </label>
+            <label class="gender-choice gender-choice-private">
+              <input type="radio" name="genderChoice" value="private" checked />
+              <span>? 不透露</span>
+            </label>
+          </div>
           <p id="authHint">新帳號請用 1 到 10 個英文字或數字。</p>
           <div class="row">
             <button id="authSubmitButton" type="submit" class="primary-button" disabled>下一步</button>

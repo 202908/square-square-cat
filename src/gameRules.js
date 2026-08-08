@@ -7,6 +7,7 @@ export const HOST_PASSWORD = process.env.HOST_PASSWORD || null;
 
 export const DEFAULT_COIN_CODES = {};
 export const CAT_VARIANTS = ["black", "white", "calico", "orange"];
+export const GENDER_OPTIONS = ["male", "female", "private"];
 export const MAX_PLAYER_LEVEL = 100;
 export const MAX_CHALLENGE_STEP_Y = 2.8;
 export const CHALLENGE_BASE = { x: -760, y: 1.2, z: -720 };
@@ -617,9 +618,14 @@ export function normalizeAccountCode(code) {
   return String(code || "").trim();
 }
 
+export function normalizeGender(gender) {
+  return GENDER_OPTIONS.includes(gender) ? gender : "private";
+}
+
 export function createAccount(code, overrides = {}) {
   const accountCode = normalizeAccountCode(code);
   const isHost = Boolean(HOST_CODE && accountCode === HOST_CODE);
+  const gender = isHost ? "private" : normalizeGender(overrides.gender);
   return {
     code: accountCode,
     level: isHost ? null : 1,
@@ -648,12 +654,14 @@ export function createAccount(code, overrides = {}) {
     claimedLevelRewards: [],
     friends: [],
     friendRequests: [],
+    gender,
     survivalMode: isHost ? "host" : null,
     hunger: 100,
     thirst: 100,
     prefers2D: false,
     createdAt: new Date().toISOString(),
-    ...overrides
+    ...overrides,
+    gender
   };
 }
 
