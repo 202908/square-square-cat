@@ -36,6 +36,7 @@ import {
   applyHousePaint,
   areHouseFriends,
   buyItem,
+  canUsePlayerAttack,
   canFly,
   canAttackPlayerTarget,
   canTravelToIsland,
@@ -674,6 +675,9 @@ function handleMessage(socket, message) {
     case "adminSetWeather":
       handleAdminSetWeather(socket, session, message.mode);
       break;
+    case "adminToggleAttackProtection":
+      handleAdminToggleAttackProtection(socket, session, message.accountCode, message.enabled);
+      break;
     default:
       send(socket, "notice", { message: "未知指令。" });
   }
@@ -746,6 +750,7 @@ function enterWorld(socket, account, persistent, options = {}) {
       carriedBy: null,
       attackUntil: 0,
       hitUntil: 0,
+      attackProtected: Boolean(account.isHost),
       location: "island",
       island: normalizeIslandCode(account.currentIsland || (account.isHost ? HOST_ISLAND_CODE : "A")),
       roomOwner: null,
@@ -842,6 +847,7 @@ function buildStateForSession(viewer) {
       level: session.account.level,
       gender: session.account.gender || "private",
       avatar: session.account.avatar || null,
+      attackProtected: Boolean(session.account.isHost || session.player.attackProtected),
       survivalMode: session.account.survivalMode,
       hunger: session.account.hunger,
       thirst: session.account.thirst,
@@ -899,6 +905,7 @@ function onlinePlayersForHost() {
     level: session.account.level,
     gender: session.account.gender || "private",
     avatar: session.account.avatar || null,
+    attackProtected: Boolean(session.account.isHost || session.player.attackProtected),
     location: session.player.location,
     island: normalizeIslandCode(session.player.island || session.account.currentIsland || "A"),
     coins: session.account.coins,
@@ -1253,13 +1260,17 @@ function detachFromStack(player) {
 }
 
 function handleAttack(session) {
+  if (!canUsePlayerAttack(session.account, session.player.attackProtected)) {
+    send(session.socket, "notice", { message: "你現在有防惡作劇保護，不能打別人。" });
+    return;
+  }
   const target = findPlayerInFront(session, 4);
   session.player.attackUntil = Date.now() + 450;
   if (!target) {
     return;
   }
-  if (!canAttackPlayerTarget(session.account, target.account)) {
-    send(session.socket, "notice", { message: "主機貓有防惡作劇保護，不能被打飛。" });
+  if (!canAttackPlayerTarget(session.account, target.account, target.player.attackProtected)) {
+    send(session.socket, "notice", { message: `${displayNameFor(target.account)} 有防惡作劇保護，不能被打飛。` });
     return;
   }
   const dx = target.player.x - session.player.x;
@@ -2894,6 +2905,35 @@ function handleAdminSetWeather(socket, session, mode) {
 
 function effectiveWorldWeather() {
   return worldWeather === "auto" ? autoWeather : worldWeather;
+}
+
+function handleAdminToggleAttackProtection(socket, session, rawAccountCode, enabled) {
+  if (!session.account.isHost) {
+    send(socket, "notice", { message: "只有主機可以控制防惡作劇保護。" });
+    return;
+  }
+  const accountCode = String(rawAccountCode || "").trim();
+  const target = findSessionByAccountCode(accountCode);
+  if (!target) {
+    send(socket, "notice", { message: "這位玩家目前不在線上。" });
+    return;
+  }
+  if (target.account.isHost) {
+    target.player.attackProtected = true;
+    send(socket, "notice", { message: "主機本來就有防惡作劇保護。" });
+    sendAccount(socket, session.account);
+    return;
+  }
+  target.player.attackProtected = Boolean(enabled);
+  send(target.socket, "notice", {
+    message: target.player.attackProtected
+      ? "主機幫你開啟防惡作劇保護：你不會被玩家打，也不能打玩家。"
+      : "主機已關閉你的防惡作劇保護。"
+  });
+  sendAccount(socket, session.account);
+  send(socket, "notice", {
+    message: `${displayNameFor(target.account)} 的防惡作劇保護已${target.player.attackProtected ? "開啟" : "關閉"}。`
+  });
 }
 
 function updateAutoWeather() {

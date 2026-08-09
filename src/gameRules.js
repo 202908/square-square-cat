@@ -1401,9 +1401,14 @@ export function damageMonster(monster) {
   return { monster: nextMonster, dead: nextMonster.hp <= 0 };
 }
 
-export function canAttackPlayerTarget(attacker, target) {
+export function canUsePlayerAttack(attacker, attackerProtected = false) {
+  if (!attacker) return false;
+  return Boolean(attacker.isHost) || !Boolean(attackerProtected);
+}
+
+export function canAttackPlayerTarget(attacker, target, targetProtected = false) {
   if (!attacker || !target) return false;
-  return !Boolean(target.isHost);
+  return !Boolean(target.isHost) && !Boolean(targetProtected);
 }
 
 export function claimLevelReward(account, level) {

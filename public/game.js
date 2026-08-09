@@ -2317,8 +2317,9 @@ function updateHitFlash(mesh, player) {
 
 function updateTailMesh(tail, player) {
   const palette = catPalette(player.catVariant);
+  const isHit = Number(player.hitUntil || 0) > Date.now();
   tail.visible = true;
-  tail.material.color.setHex(player.isHost ? 0xff8fcb : palette.body);
+  tail.material.color.setHex(isHit ? 0xff4f5f : player.isHost ? 0xff8fcb : palette.body);
   tail.position.set(0, 0.56, -1.18);
   tail.rotation.set(Math.PI / 2.15, 0, 0);
   tail.scale.set(1, 1, 1);
@@ -4154,6 +4155,17 @@ function showAdminModal() {
       ${escapeHtml(weatherLabels[mode] || WEATHER_EFFECT_LABELS[mode] || mode)}
     </button>
   `).join("");
+  const protectionRows = (state.onlinePlayers || []).map((player) => `
+    <div class="list-item">
+      <div class="split">
+        <strong>${avatarNameHtml(player.accountCode, player)}</strong>
+        <span>${player.isHost ? "固定保護" : player.attackProtected ? "保護中" : "可互動"}</span>
+      </div>
+      ${player.isHost
+        ? `<button type="button" disabled>主機固定保護</button>`
+        : `<button type="button" data-toggle-attack-protection="${escapeHtml(player.accountCode)}" data-enabled="${player.attackProtected ? "false" : "true"}">${player.attackProtected ? "關閉保護" : "開啟保護"}</button>`}
+    </div>
+  `).join("") || `<p class="muted-line">目前沒有在線玩家。</p>`;
   const titleRows = Object.values(state.titleCatalog || {}).map((title) => `
     <div class="list-item">
       <div class="split">
@@ -4184,6 +4196,11 @@ function showAdminModal() {
       <p class="muted-line">主機模式：${escapeHtml(weatherLabels[selectedWeatherMode] || WEATHER_EFFECT_LABELS[selectedWeatherMode] || selectedWeatherMode)}；現在天氣：${escapeHtml(weatherLabels[state.weather] || WEATHER_EFFECT_LABELS[state.weather] || state.weather)}</p>
       <div class="row">${weatherRows}</div>
     </section>
+    <section class="list">
+      <strong>防惡作劇保護</strong>
+      <p class="muted-line">開啟保護的玩家不會被玩家打，也不能打玩家。主機固定保護，但仍然可以打別人。</p>
+      ${protectionRows}
+    </section>
     <form id="adminTitleForm" class="list">
       <strong>新增稱號</strong>
       <input id="adminTitleNameInput" maxlength="14" placeholder="稱號名稱，例如 超級喵喵" />
@@ -4209,6 +4226,12 @@ function showAdminModal() {
   `);
   document.querySelectorAll("[data-weather-mode]").forEach((button) => {
     button.addEventListener("click", () => send("adminSetWeather", { mode: button.dataset.weatherMode }));
+  });
+  document.querySelectorAll("[data-toggle-attack-protection]").forEach((button) => {
+    button.addEventListener("click", () => send("adminToggleAttackProtection", {
+      accountCode: button.dataset.toggleAttackProtection,
+      enabled: button.dataset.enabled === "true"
+    }));
   });
   document.querySelector("#adminTitleForm").addEventListener("submit", (event) => {
     event.preventDefault();
