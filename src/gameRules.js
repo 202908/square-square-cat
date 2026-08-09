@@ -6,7 +6,20 @@ export const HOST_CODE = process.env.HOST_ACCOUNT_CODE || null;
 export const HOST_PASSWORD = process.env.HOST_PASSWORD || null;
 
 export const DEFAULT_COIN_CODES = {};
-export const CAT_VARIANTS = ["black", "white", "calico", "orange"];
+export const CAT_VARIANTS = ["black", "white", "calico", "orange", "blue", "moonPinkEar", "storm", "lavender", "mint", "gold", "chocolate"];
+export const CAT_VARIANT_RARITIES = [
+  { id: "black", weight: 18, rarity: "common" },
+  { id: "white", weight: 18, rarity: "common" },
+  { id: "calico", weight: 18, rarity: "common" },
+  { id: "orange", weight: 18, rarity: "common" },
+  { id: "chocolate", weight: 8, rarity: "uncommon" },
+  { id: "mint", weight: 6, rarity: "rare" },
+  { id: "gold", weight: 4, rarity: "rare" },
+  { id: "lavender", weight: 4, rarity: "rare" },
+  { id: "storm", weight: 2, rarity: "ultraRare" },
+  { id: "blue", weight: 2, rarity: "ultraRare" },
+  { id: "moonPinkEar", weight: 2, rarity: "ultraRare" }
+];
 export const GENDER_OPTIONS = ["male", "female", "private"];
 export const MAX_PLAYER_LEVEL = 100;
 export const MAX_CHALLENGE_STEP_Y = 2.8;
@@ -665,8 +678,15 @@ export function createAccount(code, overrides = {}) {
   };
 }
 
-export function pickRandomCatVariant() {
-  return CAT_VARIANTS[Math.floor(Math.random() * CAT_VARIANTS.length)];
+export function pickRandomCatVariant(excludedVariant = null) {
+  const pool = CAT_VARIANT_RARITIES.filter((entry) => entry.id !== excludedVariant);
+  const totalWeight = pool.reduce((sum, entry) => sum + entry.weight, 0);
+  let roll = Math.random() * totalWeight;
+  for (const entry of pool) {
+    roll -= entry.weight;
+    if (roll < 0) return entry.id;
+  }
+  return pool[0]?.id || CAT_VARIANT_RARITIES[0].id;
 }
 
 export function makeGuestAccount(overrides = {}) {

@@ -1114,7 +1114,7 @@ function createCatMesh(player) {
   rightEar.position.x = 0.55;
   group.add(rightEar);
 
-  if (player.catVariant === "host") {
+  if (player.catVariant === "host" || player.catVariant === "moonPinkEar") {
     const moon = new THREE.Mesh(
       new THREE.PlaneGeometry(0.34, 0.34),
       new THREE.MeshBasicMaterial({ map: makeMoonTexture(), transparent: true })
@@ -1152,7 +1152,14 @@ function catPalette(variant) {
     black: { body: 0x25282e, face: "#f5f1e8" },
     white: { body: 0xf6f2e9, face: "#ffffff" },
     calico: { body: 0xf5eee0, face: "#fff8ef" },
-    orange: { body: 0xe88a35, face: "#ffe0b4" }
+    orange: { body: 0xe88a35, face: "#ffe0b4" },
+    chocolate: { body: 0x6f4a32, ear: 0x9a6b50, face: "#ffe2c8" },
+    mint: { body: 0x8fffd2, ear: 0x67d88a, face: "#f1fff9" },
+    gold: { body: 0xffd166, ear: 0xff9b3d, face: "#fff3c2" },
+    lavender: { body: 0xb78cff, ear: 0xff8fcb, face: "#f7eeff" },
+    storm: { body: 0x5f7892, ear: 0xbfe8ff, face: "#eef7ff" },
+    blue: { body: 0x62b7ff, ear: 0x173d8f, face: "#eaf7ff" },
+    moonPinkEar: { body: 0xff9fd0, ear: 0xff8fcb, face: "#fff2fb" }
   }[variant] || { body: 0xf6f2e9, face: "#ffffff" };
 }
 
@@ -2865,7 +2872,7 @@ function drawFlatCat(ctx, view, player, isMe) {
     ctx.fillStyle = "#d77a2d";
     ctx.fillRect(x + size * 0.12, y - size * 0.55, size * 0.24, size * 0.2);
   }
-  if (player.catVariant === "host") {
+  if (player.catVariant === "host" || player.catVariant === "moonPinkEar") {
     drawFlatMoon(ctx, x, y - size * 0.82, size * 0.18, hexColor(palette.body));
   }
   ctx.fillStyle = "#211a16";

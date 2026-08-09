@@ -6,7 +6,6 @@ import { existsSync, createReadStream } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  CAT_VARIANTS,
   DEFAULT_COIN_CODES,
   DEFAULT_TITLE_ID,
   DEFAULT_TITLES,
@@ -52,6 +51,7 @@ import {
   normalizeGender,
   normalizeIslandCode,
   normalizeWeatherMode,
+  pickRandomCatVariant,
   redeemCode,
   richestIslandWealthAccountCode,
   rocketParkingSpot,
@@ -2327,8 +2327,7 @@ function handleUseConsumable(socket, session, itemId, text) {
       send(socket, "notice", { message: "主機貓是專屬外觀，毛色不會被更改卷改掉。" });
       return;
     }
-    const choices = CAT_VARIANTS.filter((variant) => variant !== session.account.catVariant);
-    session.account.catVariant = choices[Math.floor(Math.random() * choices.length)] || CAT_VARIANTS[0];
+    session.account.catVariant = pickRandomCatVariant(session.account.catVariant);
     persistSessionAccount(session);
     sendAccount(socket, session.account);
     send(socket, "notice", { message: "毛色更改成功，新的毛色已永久保存。" });

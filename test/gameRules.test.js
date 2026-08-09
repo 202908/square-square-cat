@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   CAT_VARIANTS,
+  CAT_VARIANT_RARITIES,
   DEFAULT_TITLE_ID,
   DEFAULT_TITLES,
   FURNITURE_ITEMS,
@@ -49,6 +50,7 @@ import {
   normalizeGender,
   normalizeIslandCode,
   normalizeWeatherMode,
+  pickRandomCatVariant,
   roomFurniturePlatforms,
   roomFurniturePlacement,
   redeemCode,
@@ -85,6 +87,7 @@ test("host account can be created without exposing a real secret", () => {
 test("player account gets one allowed cat skin at creation", () => {
   const account = createAccount("abc");
   assert.equal(CAT_VARIANTS.includes(account.catVariant), true);
+  assert.equal(account.catVariant === "host", false);
   assert.equal(account.diamonds, 0);
   assert.equal(account.prefers2D, false);
   assert.equal(account.gender, "private");
@@ -92,6 +95,29 @@ test("player account gets one allowed cat skin at creation", () => {
   assert.equal(account.equipped.title, DEFAULT_TITLE_ID);
   assert.equal(account.titles.includes(DEFAULT_TITLE_ID), true);
   assert.deepEqual(DEFAULT_TITLES[DEFAULT_TITLE_ID], { id: DEFAULT_TITLE_ID, name: "新手貓貓", color: "black" });
+});
+
+test("cat skin rarity table keeps host exclusive and rare skins rare", () => {
+  const totalWeight = CAT_VARIANT_RARITIES.reduce((sum, entry) => sum + entry.weight, 0);
+  const weightById = Object.fromEntries(CAT_VARIANT_RARITIES.map((entry) => [entry.id, entry.weight]));
+  assert.equal(totalWeight, 100);
+  assert.equal(CAT_VARIANTS.includes("host"), false);
+  assert.equal(CAT_VARIANT_RARITIES.some((entry) => entry.id === "host"), false);
+  assert.equal(weightById.blue, 2);
+  assert.equal(weightById.moonPinkEar, 2);
+  for (const entry of CAT_VARIANT_RARITIES) {
+    assert.equal(CAT_VARIANTS.includes(entry.id), true);
+  }
+});
+
+test("random cat skin picker can exclude the current skin", () => {
+  const originalRandom = Math.random;
+  Math.random = () => 0;
+  try {
+    assert.equal(pickRandomCatVariant("black"), "white");
+  } finally {
+    Math.random = originalRandom;
+  }
 });
 
 test("account gender display uses fixed choices and falls back to private", () => {
