@@ -3236,7 +3236,7 @@ function sendInput() {
   if (state.keys.has("ArrowRight") || state.keys.has("KeyD")) localX += 1;
   if (state.keys.has("ArrowUp") || state.keys.has("KeyW")) localZ -= 1;
   if (state.keys.has("ArrowDown") || state.keys.has("KeyS")) localZ += 1;
-  localX -= state.joystick.x;
+  localX += state.joystick.x;
   localZ += state.joystick.z;
   if (is2DMode()) localZ = 0;
   const length = Math.hypot(localX, localZ);
