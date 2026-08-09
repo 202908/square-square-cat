@@ -864,9 +864,6 @@ export function exchangeCoinsForDiamonds(account, rawDiamonds = 1) {
 }
 
 export function drawMonthlyBlindBox(account, date = new Date(), random = Math.random) {
-  if (account.isHost) {
-    return { ok: false, message: "主機貓是專屬外觀，不會被盲盒改掉。" };
-  }
   const state = blindBoxStateForAccount(account, date);
   const monthly = state.current;
   if (Number(account.diamonds || 0) < state.nextCost) {
@@ -874,7 +871,7 @@ export function drawMonthlyBlindBox(account, date = new Date(), random = Math.ra
   }
   const nextAccount = structuredClone(account);
   nextAccount.ownedCatVariants = normalizeOwnedCatVariants(nextAccount.ownedCatVariants, nextAccount.catVariant);
-  nextAccount.diamonds -= state.nextCost;
+  if (!nextAccount.isHost) nextAccount.diamonds -= state.nextCost;
   const win = state.nextDrawNumber >= BLIND_BOX_PITY_DRAWS || random() < BLIND_BOX_WIN_CHANCE;
   nextAccount.blindBoxPity = win
     ? { month: monthly.month, draws: 0 }
@@ -903,14 +900,16 @@ export function drawMonthlyBlindBox(account, date = new Date(), random = Math.ra
     };
   }
   nextAccount.ownedCatVariants.push(monthly.id);
-  nextAccount.catVariant = monthly.id;
+  if (!nextAccount.isHost) nextAccount.catVariant = monthly.id;
   return {
     ok: true,
     account: nextAccount,
     variant: monthly,
     reward: { kind: "skin", variant: monthly },
     won: true,
-    message: `恭喜獲得 ${monthly.name} 皮膚，毛色已永久保存。`
+    message: nextAccount.isHost
+      ? `恭喜獲得 ${monthly.name} 皮膚。`
+      : `恭喜獲得 ${monthly.name} 皮膚，毛色已永久保存。`
   };
 }
 

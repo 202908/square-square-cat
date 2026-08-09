@@ -190,9 +190,11 @@ test("monthly blind box uses chance and guarantees the tenth draw", () => {
   assert.equal(result.account.blindBoxPity.draws, 0);
 
   const host = createAccount("host", { isHost: true, diamonds: 999999999, catVariant: "host" });
-  const hostResult = drawMonthlyBlindBox(host, date);
-  assert.equal(hostResult.ok, false);
-  assert.equal(hostResult.message.includes("主機貓"), true);
+  const hostResult = drawMonthlyBlindBox(host, date, () => 0);
+  assert.equal(hostResult.ok, true);
+  assert.equal(hostResult.won, true);
+  assert.equal(hostResult.account.catVariant, "host");
+  assert.equal(hostResult.account.ownedCatVariants.includes("augNebula"), true);
 });
 
 test("monthly blind box consolation prizes give items and refund duplicate equipment", () => {
