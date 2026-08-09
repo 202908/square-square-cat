@@ -240,6 +240,11 @@ function bindUi() {
     state.keys.delete(event.code);
     if (event.code === "Space") state.jump = false;
   });
+  window.addEventListener("blur", resetInputState);
+  window.addEventListener("pagehide", resetInputState);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) resetInputState();
+  });
 
   bindJoystick();
   bindCameraDrag();
@@ -3192,9 +3197,22 @@ function sendInput() {
   const rightX = Math.cos(cameraAngle);
   const rightZ = -Math.sin(cameraAngle);
   const forwardAmount = -localZ;
-  input.x = -rightX * localX + forwardX * forwardAmount;
-  input.z = -rightZ * localX + forwardZ * forwardAmount;
+  input.x = rightX * localX + forwardX * forwardAmount;
+  input.z = rightZ * localX + forwardZ * forwardAmount;
   state.socket.send(JSON.stringify({ type: "input", input }));
+}
+
+function resetInputState() {
+  state.keys.clear();
+  state.jump = false;
+  state.flyY = 0;
+  state.joystick.active = false;
+  state.joystick.x = 0;
+  state.joystick.z = 0;
+  if (els.joystickKnob) els.joystickKnob.style.transform = "translate(0, 0)";
+  if (state.account && state.socket?.readyState === WebSocket.OPEN) {
+    state.socket.send(JSON.stringify({ type: "input", input: { x: 0, z: 0, y: 0, jump: false } }));
+  }
 }
 
 function bindJoystick() {

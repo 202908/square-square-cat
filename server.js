@@ -86,6 +86,7 @@ const titlesFile = path.join(dataDir, "titles.json");
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.RENDER ? "0.0.0.0" : "127.0.0.1";
 const TICK_RATE = 30;
+const INPUT_TIMEOUT_MS = 350;
 const ROCKET_ROOM_CENTER = { x: 280, z: 0 };
 const ROCKET_ROOM_BOUNDS = {
   minX: ROCKET_ROOM_CENTER.x - 10,
@@ -449,6 +450,7 @@ function handleMessage(socket, message) {
         send(socket, "notice", { message: "你離開一起飛行了。" });
       }
       session.input = sanitizeInput(message.input, canFly(session.account));
+      session.lastInputAt = Date.now();
       break;
     case "chat":
       addChat(session, message.text);
@@ -691,6 +693,7 @@ function enterWorld(socket, account, persistent, options = {}) {
     account: structuredClone(account),
     persistent,
     input: { x: 0, z: 0, y: 0, jump: false },
+    lastInputAt: Date.now(),
     player: {
       id: sessionId,
       accountCode: account.code,
@@ -749,7 +752,11 @@ function tickWorld() {
   activeEffects = activeEffects.filter((effect) => Date.now() < effect.expiresAt);
   updateSwing(1 / TICK_RATE);
   updateFerris(1 / TICK_RATE);
+  const now = Date.now();
   for (const session of sessions.values()) {
+    if (now - Number(session.lastInputAt || 0) > INPUT_TIMEOUT_MS) {
+      session.input = { x: 0, z: 0, y: 0, jump: false };
+    }
     updatePlayer(session, 1 / TICK_RATE);
   }
   for (const session of sessions.values()) {
