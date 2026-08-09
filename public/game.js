@@ -2722,8 +2722,6 @@ function drawFlatIsland(ctx, view, width, height) {
   ctx.fillRect(width / 3, view.groundY, width / 3, height - view.groundY);
   ctx.fillStyle = "#d9c7ff";
   ctx.fillRect((width / 3) * 2, view.groundY, width / 3, height - view.groundY);
-  ctx.fillStyle = "#62b7ff";
-  ctx.fillRect(0, view.groundY + 18, width, 14);
 
   drawFlatSlide(ctx, view, -24);
   drawFlatSwing(ctx, view, 12);
@@ -3065,8 +3063,8 @@ function drawFlatCoin(ctx, view, coin) {
 function drawFlatCat(ctx, view, player, isMe) {
   const palette = catPalette(player.catVariant);
   const x = view.toX(player.x);
-  const y = view.toY(player.y);
   const size = isMe ? 26 : 23;
+  const y = view.toY(player.y) - size * 0.58;
   if (player.equipped?.trail) drawFlatTrail(ctx, view, player, size);
   if (player.equipped?.pet && player.location !== "challenge") drawFlatMiniCat(ctx, x - 38, y + 12, palette);
   if (player.equipped?.clothes && String(player.equipped.clothes).includes("wing")) {
