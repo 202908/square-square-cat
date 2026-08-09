@@ -328,7 +328,7 @@ test("host account starts on Inn island with a prepared rainbow house", () => {
     assert.equal(account.inventory.includes(itemId), true);
   }
   assert.equal(account.equipped.clothes, "wings");
-  assert.equal(account.equipped.tail, "moon-tail");
+  assert.equal(account.equipped.tail, null);
   assert.equal(account.equipped.trail, "rainbow-trail");
   assert.equal(account.equipped.pet, "cat-pet");
   assert.equal(account.rocketPaint, HOST_DEFAULT_ROCKET_PAINT);
@@ -341,6 +341,7 @@ test("host default room starts packed with placed furniture", () => {
   const roomItems = createHostDefaultRoomItems();
   assert.equal(roomItems.length, HOST_DEFAULT_ROOM_FURNITURE_IDS.length);
   assert.equal(roomItems.length, FURNITURE_ITEMS.length);
+  assert.equal(roomItems.length, 30);
   assert.equal(new Set(roomItems.map((item) => item.id)).size, roomItems.length);
   assert.ok(roomItems.some((item) => item.itemId === "cat-tree"));
   assert.ok(roomItems.some((item) => item.itemId === "mini-slide-toy"));
@@ -358,14 +359,19 @@ test("built-in achievement titles have the requested names and colors", () => {
   assert.deepEqual(DEFAULT_TITLES["host-cat"].colors, ["pink", "white", "lightBlue"]);
 });
 
-test("shop has at least fifty furniture items", () => {
-  assert.ok(SHOP_ITEMS.filter((item) => item.type === "furniture").length >= 50);
+test("shop keeps thirty furniture items for a lighter server", () => {
+  const furniture = SHOP_ITEMS.filter((item) => item.type === "furniture");
+  assert.equal(furniture.length, 30);
+  assert.ok(furniture.some((item) => item.id === "cat-tree"));
+  assert.ok(furniture.some((item) => item.id === "mini-slide-toy"));
 });
 
 test("shop keeps rainbow trail and only the small cat pet", () => {
   const pets = SHOP_ITEMS.filter((item) => item.type === "pet");
   assert.deepEqual(pets.map((item) => item.id), ["cat-pet"]);
   assert.ok(SHOP_ITEMS.some((item) => item.id === "rainbow-trail" && item.name === "彩虹拖尾特效"));
+  assert.ok(SHOP_ITEMS.some((item) => item.id === "wings" && item.name === "貓眼星雲翅膀"));
+  assert.equal(SHOP_ITEMS.some((item) => item.slot === "tail"), false);
 });
 
 test("shop does not include removed poop items", () => {
@@ -398,9 +404,10 @@ test("cat tree and room slide prefer wall-side placement", () => {
   assert.ok(slide.x > 228);
 });
 
-test("shop has at least one hundred visible non-furniture items", () => {
+test("shop has a smaller visible non-furniture catalog", () => {
   const nonFurniture = SHOP_ITEMS.filter((item) => item.type !== "furniture");
-  assert.ok(nonFurniture.length >= 100);
+  assert.ok(nonFurniture.length < 90);
+  assert.ok(nonFurniture.length >= 60);
   assert.equal(nonFurniture.every((item) => item.slot || ["house", "rocket", "rocket-paint", "consumable"].includes(item.type)), true);
 });
 

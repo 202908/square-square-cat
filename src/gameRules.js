@@ -60,7 +60,7 @@ export const BLIND_BOX_CONSOLATION_REWARDS = [
   { kind: "diamonds", diamonds: 5 },
   { kind: "item", itemId: "star-hat" },
   { kind: "item", itemId: "nebula-scarf" },
-  { kind: "item", itemId: "comet-tail" },
+  { kind: "item", itemId: "moon-hat" },
   { kind: "item", itemId: "cloud-trail" },
   { kind: "item", itemId: "rainbow-trail" }
 ];
@@ -83,7 +83,7 @@ export const ROCKET_MAX_LEVEL = 5;
 export const ROCKET_UPGRADE_COSTS = [0, 300, 700, 1200, 1800];
 export const HOST_ISLAND_CODE = "Inn";
 export const HOST_DEFAULT_ROCKET_PAINT = "pink";
-export const HOST_DEFAULT_INVENTORY = ["cat-house", "rocket", "wings", "rainbow-trail", "cat-pet", "moon-tail"];
+export const HOST_DEFAULT_INVENTORY = ["cat-house", "rocket", "wings", "rainbow-trail", "cat-pet"];
 export const HOST_DEFAULT_HOUSE = {
   x: 2,
   y: 1,
@@ -132,6 +132,13 @@ export const TITLE_COLORS = {
   mint: "#8fffd2",
   gold: "#ffd166"
 };
+
+const KEPT_EXTRA_NON_FURNITURE_ITEM_IDS = new Set([
+  "sun-hat", "moon-hat", "cloud-hat", "rainbow-hat", "ufo-hat", "crown-hat", "flower-hat", "ribbon-hat", "star-crown", "sleep-cap",
+  "nebula-cape", "cloud-cape", "raincoat", "star-jacket", "moon-poncho", "bubble-suit", "rocket-pack", "angel-wings", "mini-wings", "butterfly-wings",
+  "sparkle-trail", "heart-trail", "moon-trail", "snow-trail", "crystal-trail",
+  "cat-pet"
+]);
 
 export const EXTRA_NON_FURNITURE_ITEMS = [
   ["sun-hat", "太陽帽", "hat", "wearable", 140],
@@ -231,7 +238,7 @@ export const EXTRA_NON_FURNITURE_ITEMS = [
   ["shell-pet", "貝殼寵物", "pet", "pet", 410],
   ["angel-pet", "天使寵物", "pet", "pet", 550],
   ["wizard-pet", "魔法寵物", "pet", "pet", 540]
-].map(([id, name, slot, type, price]) => ({ id, name, slot, type, price }));
+].filter(([id]) => KEPT_EXTRA_NON_FURNITURE_ITEM_IDS.has(id)).map(([id, name, slot, type, price]) => ({ id, name, slot, type, price }));
 
 export const FURNITURE_ITEMS = [
   ["cloud-bed", "雲朵床", 180],
@@ -284,7 +291,7 @@ export const FURNITURE_ITEMS = [
   ["round-tea-set", "圓桌茶具", 160],
   ["nebula-beanbag", "星雲懶骨頭", 190],
   ["tiny-piano", "小鋼琴", 340]
-].map(([id, name, price]) => ({ id, name, type: "furniture", price }));
+].slice(0, 30).map(([id, name, price]) => ({ id, name, type: "furniture", price }));
 
 export const HOST_DEFAULT_ROOM_FURNITURE_IDS = FURNITURE_ITEMS.map((item) => item.id);
 
@@ -474,7 +481,6 @@ export const CONSUMABLE_ITEMS = [
 export const SHOP_ITEMS = [
   { id: "star-hat", name: "星星帽", slot: "hat", type: "wearable", price: 120 },
   { id: "nebula-scarf", name: "星雲圍巾", slot: "clothes", type: "wearable", price: 220 },
-  { id: "comet-tail", name: "彗星尾巴", slot: "tail", type: "wearable", price: 180 },
   { id: "wings", name: "貓眼星雲翅膀", slot: "clothes", type: "wearable", price: 1500 },
   { id: "cloud-trail", name: "雲朵拖尾", slot: "trail", type: "trail", price: 260 },
   { id: "rainbow-trail", name: "彩虹拖尾特效", slot: "trail", type: "trail", price: 360 },
@@ -695,7 +701,7 @@ export function createAccount(code, overrides = {}) {
     equipped: {
       hat: null,
       clothes: isHost ? "wings" : null,
-      tail: isHost ? "moon-tail" : null,
+      tail: null,
       trail: isHost ? "rainbow-trail" : null,
       pet: isHost ? "cat-pet" : null,
       title: isHost ? "host-cat" : DEFAULT_TITLE_ID

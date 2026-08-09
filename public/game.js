@@ -2150,16 +2150,12 @@ function updateHitFlash(mesh, player) {
 }
 
 function updateTailMesh(tail, player) {
-  const tailId = player.equipped?.tail;
-  tail.visible = Boolean(tailId);
-  if (!tailId) return;
-  tail.material.color.setHex(player.isHost ? 0xff8fcb : itemColor(tailId));
-  const speed = Math.hypot(Number(player.vx || 0), Number(player.vz || 0));
-  const wag = Math.sin((clock?.elapsedTime || 0) * 8) * Math.min(0.42, speed * 0.04);
-  const lift = Math.min(0.32, speed * 0.035);
-  tail.position.set(0, 0.56 + lift * 0.2, -1.18);
-  tail.rotation.set(Math.PI / 2.15 - lift, wag, wag * 0.55);
-  tail.scale.set(tailId.includes("dino") ? 1.35 : 1, tailId.includes("rainbow") ? 1.25 : 1, 1);
+  const palette = catPalette(player.catVariant);
+  tail.visible = true;
+  tail.material.color.setHex(player.isHost ? 0xff8fcb : palette.body);
+  tail.position.set(0, 0.56, -1.18);
+  tail.rotation.set(Math.PI / 2.15, 0, 0);
+  tail.scale.set(1, 1, 1);
 }
 
 function updateHatMesh(group, hatId) {
@@ -2261,7 +2257,7 @@ function updatePetMesh(group, player) {
   const tail = new THREE.Mesh(new THREE.CapsuleGeometry(0.07, 0.5, 4, 10), material);
   tail.position.set(-1.45, 0.62 + bob, -2.48);
   tail.rotation.x = Math.PI / 2.6;
-  tail.rotation.z = Math.sin(Date.now() * 0.006) * 0.35;
+  tail.rotation.z = 0;
   group.add(tail);
 }
 
@@ -2883,6 +2879,8 @@ function drawFlatCat(ctx, view, player, isMe) {
     ctx.lineTo(x + size * 0.9, y + size * 0.05);
     ctx.fill();
   }
+  ctx.fillStyle = hexColor(player.isHost ? 0xff8fcb : palette.body);
+  ctx.fillRect(x - size * 0.18, y - size * 0.18, size * 0.36, size * 0.76);
   ctx.fillStyle = hexColor(palette.body);
   ctx.fillRect(x - size / 2, y - size, size, size);
   ctx.fillStyle = hexColor(palette.ear || palette.body);

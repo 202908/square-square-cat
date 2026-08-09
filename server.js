@@ -258,7 +258,7 @@ async function loadData() {
             changedAccounts = true;
           }
         }
-        for (const [slot, itemId] of Object.entries({ clothes: "wings", tail: "moon-tail", trail: "rainbow-trail", pet: "cat-pet" })) {
+        for (const [slot, itemId] of Object.entries({ clothes: "wings", trail: "rainbow-trail", pet: "cat-pet" })) {
           if (account.equipped[slot] !== itemId) {
             account.equipped[slot] = itemId;
             changedAccounts = true;
@@ -313,13 +313,15 @@ async function loadData() {
         changedAccounts = true;
       }
       if (Array.isArray(account.roomItems)) {
-        const keptRoomItems = account.roomItems.filter((item) => !REMOVED_ITEM_IDS.has(item.itemId));
+        const keptRoomItems = account.roomItems.filter((item) =>
+          !REMOVED_ITEM_IDS.has(item.itemId) && HOST_DEFAULT_ROOM_FURNITURE_IDS.includes(item.itemId)
+        );
         if (keptRoomItems.length !== account.roomItems.length) {
           account.roomItems = keptRoomItems;
           changedAccounts = true;
         }
       }
-      if (account.isHost && account.roomItems.length < HOST_DEFAULT_ROOM_FURNITURE_IDS.length) {
+      if (account.isHost && account.roomItems.length !== HOST_DEFAULT_ROOM_FURNITURE_IDS.length) {
         account.roomItems = createHostDefaultRoomItems();
         changedAccounts = true;
       }
