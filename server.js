@@ -37,6 +37,7 @@ import {
   areHouseFriends,
   buyItem,
   canFly,
+  canAttackPlayerTarget,
   canTravelToIsland,
   challengeFinishForLevel,
   challengeLevelForAccounts,
@@ -1255,6 +1256,10 @@ function handleAttack(session) {
   const target = findPlayerInFront(session, 4);
   session.player.attackUntil = Date.now() + 450;
   if (!target) {
+    return;
+  }
+  if (!canAttackPlayerTarget(session.account, target.account)) {
+    send(session.socket, "notice", { message: "主機貓有防惡作劇保護，不能被打飛。" });
     return;
   }
   const dx = target.player.x - session.player.x;

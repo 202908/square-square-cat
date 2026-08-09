@@ -37,6 +37,7 @@ import {
   blindBoxCostForDraw,
   blindBoxStateForAccount,
   canTravelToIsland,
+  canAttackPlayerTarget,
   challengeLevelForAccounts,
   challengeFinishForLevel,
   claimLevelReward,
@@ -821,6 +822,14 @@ test("attacks no longer reduce thirst for any mode", () => {
   assert.equal(adultResult.account.thirst, 50);
   assert.equal(childResult.account.thirst, 50);
   assert.equal(hostResult.account.thirst, 50);
+});
+
+test("host account cannot be targeted by player attacks", () => {
+  const host = createAccount("host", { isHost: true });
+  const player = createAccount("player");
+
+  assert.equal(canAttackPlayerTarget(player, host), false);
+  assert.equal(canAttackPlayerTarget(host, player), true);
 });
 
 test("monster dies after three hits", () => {

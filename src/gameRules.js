@@ -1401,6 +1401,11 @@ export function damageMonster(monster) {
   return { monster: nextMonster, dead: nextMonster.hp <= 0 };
 }
 
+export function canAttackPlayerTarget(attacker, target) {
+  if (!attacker || !target) return false;
+  return !Boolean(target.isHost);
+}
+
 export function claimLevelReward(account, level) {
   if (account.isHost) {
     return { ok: false, message: "主機不用領等級獎勵，已經是無限資源。" };
