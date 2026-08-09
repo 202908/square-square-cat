@@ -3609,6 +3609,9 @@ function showBagModal() {
   document.querySelectorAll("[data-use-consumable]").forEach((button) => {
     button.addEventListener("click", () => useConsumableFromBag(button.dataset.useConsumable));
   });
+  document.querySelectorAll("[data-delete-inventory-item]").forEach((button) => {
+    button.addEventListener("click", () => deleteInventoryItemFromBag(button.dataset.deleteInventoryItem));
+  });
   document.querySelectorAll("[data-equip-title]").forEach((button) => {
     button.addEventListener("click", () => send("equipTitle", { titleId: button.dataset.equipTitle }));
   });
@@ -3639,7 +3642,7 @@ function bagItemHtml(item) {
         <strong>${escapeHtml(item.name)}</strong>
         <span>${item.type === "consumable" ? `一次性 x${inventoryCount(item.id)}` : item.slot ? (state.account.equipped[item.slot] === item.id ? "裝備中" : item.slot) : item.type}</span>
       </div>
-      ${bagActionButton(item)}
+      <div class="row">${bagActionButton(item)}<button data-delete-inventory-item="${escapeHtml(item.id)}">刪除</button></div>
     </div>
   `;
 }
@@ -3653,6 +3656,14 @@ function useConsumableFromBag(itemId) {
   const text = item?.needsText ? window.prompt("煙火中間要寫什麼字？最多 18 個字。", state.account?.code || "") : "";
   if (item?.needsText && !String(text || "").trim()) return;
   send("useConsumable", { itemId, text });
+}
+
+function deleteInventoryItemFromBag(itemId) {
+  const item = state.shopItems.find((candidate) => candidate.id === itemId);
+  if (!item) return;
+  const refund = Math.floor(Number(item.price || 0) * 2 / 3);
+  if (!window.confirm(`刪除 ${item.name}？會退還 ${refund} 金幣。`)) return;
+  send("deleteInventoryItem", { itemId });
 }
 
 function cssTitleColor(colorId) {

@@ -1027,6 +1027,32 @@ export function equipItem(account, itemId) {
   return { ok: true, account: nextAccount, message: "背包已更新。" };
 }
 
+export function deleteInventoryItem(account, itemId) {
+  const item = SHOP_ITEMS.find((candidate) => candidate.id === itemId);
+  if (!item) {
+    return { ok: false, message: "找不到這個物品。" };
+  }
+  const index = account.inventory?.indexOf(itemId) ?? -1;
+  if (index === -1) {
+    return { ok: false, message: "背包裡沒有這個物品。" };
+  }
+
+  const refundCoins = Math.floor(Number(item.price || 0) * 2 / 3);
+  const nextAccount = structuredClone(account);
+  nextAccount.inventory.splice(index, 1);
+  nextAccount.coins = Number(nextAccount.coins || 0) + refundCoins;
+  if (item.slot && nextAccount.equipped?.[item.slot] === item.id && !nextAccount.inventory.includes(item.id)) {
+    nextAccount.equipped[item.slot] = null;
+  }
+
+  return {
+    ok: true,
+    account: nextAccount,
+    refundCoins,
+    message: `刪除 ${item.name}，退還 ${refundCoins} 金幣。`
+  };
+}
+
 export function equipCatVariant(account, variantId) {
   const variant = String(variantId || "");
   if (!CAT_VARIANTS.includes(variant) && variant !== "host") {

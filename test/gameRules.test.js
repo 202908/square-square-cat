@@ -43,6 +43,7 @@ import {
   createAccount,
   createHostDefaultRoomItems,
   damageAdultThirst,
+  deleteInventoryItem,
   drawMonthlyBlindBox,
   equipItem,
   equipCatVariant,
@@ -481,6 +482,32 @@ test("shopping and equipping updates inventory and slot", () => {
   const equipped = equipItem(purchase.account, "star-hat");
   assert.equal(equipped.ok, true);
   assert.equal(equipped.account.equipped.hat, "star-hat");
+});
+
+test("deleting inventory items refunds two thirds of the price and unequips them", () => {
+  const account = createAccount("delete-item", {
+    coins: 1,
+    inventory: ["star-hat"],
+    equipped: { hat: "star-hat", clothes: null, tail: null, trail: null, pet: null, title: DEFAULT_TITLE_ID }
+  });
+  const result = deleteInventoryItem(account, "star-hat");
+  assert.equal(result.ok, true);
+  assert.equal(result.refundCoins, 80);
+  assert.equal(result.account.coins, 81);
+  assert.deepEqual(result.account.inventory, []);
+  assert.equal(result.account.equipped.hat, null);
+});
+
+test("deleting a consumable removes one copy and refunds with decimals dropped", () => {
+  const account = createAccount("delete-consumable", {
+    coins: 0,
+    inventory: ["word-firework", "word-firework"]
+  });
+  const result = deleteInventoryItem(account, "word-firework");
+  assert.equal(result.ok, true);
+  assert.equal(result.refundCoins, 120);
+  assert.equal(result.account.coins, 120);
+  assert.deepEqual(result.account.inventory, ["word-firework"]);
 });
 
 test("consumables can be bought more than once and used one at a time", () => {

@@ -47,6 +47,7 @@ import {
   createHostDefaultRoomItems,
   damageAdultThirst,
   damageMonster,
+  deleteInventoryItem,
   drawMonthlyBlindBox,
   equipItem,
   equipCatVariant,
@@ -482,6 +483,9 @@ function handleMessage(socket, message) {
       break;
     case "equipCatVariant":
       updateAccount(socket, session, equipCatVariant(session.account, message.variantId));
+      break;
+    case "deleteInventoryItem":
+      updateAccount(socket, session, deleteInventoryItem(session.account, message.itemId));
       break;
     case "equipTitle":
       handleEquipTitle(socket, session, message.titleId);
