@@ -12,6 +12,7 @@ import {
   FURNITURE_ITEMS,
   FREE_ISLAND_CODES,
   GENDER_OPTIONS,
+  HOST_AVATAR_URL,
   HOST_DEFAULT_HOUSE,
   HOST_DEFAULT_INVENTORY,
   HOST_DEFAULT_ROCKET_PAINT,
@@ -61,6 +62,7 @@ import {
   isValidNewAccountCode,
   makeGuestAccount,
   monthlyCatVariantForMonth,
+  normalizeAvatarDataUrl,
   normalizeGender,
   normalizeIslandCode,
   normalizeWeatherMode,
@@ -102,6 +104,15 @@ test("host account can be created without exposing a real secret", () => {
   assert.equal(account.level, null);
   assert.equal(account.catVariant, "host");
   assert.ok(account.coins > 1000000);
+});
+
+test("avatar data urls are normalized before saving to accounts", () => {
+  const avatar = "data:image/png;base64,aGVsbG8=";
+  const account = createAccount("avatar1", { avatar, gender: "female" });
+  assert.equal(account.avatar, avatar);
+  assert.equal(account.gender, "female");
+  assert.equal(normalizeAvatarDataUrl("data:image/svg+xml;base64,PHN2Zz4="), null);
+  assert.equal(normalizeAvatarDataUrl(`data:image/png;base64,${"a".repeat(70000)}`), null);
 });
 
 test("player account gets one allowed cat skin at creation", () => {
@@ -334,6 +345,7 @@ test("host account starts on Inn island with a prepared rainbow house", () => {
   assert.equal(account.equipped.pet, "cat-pet");
   assert.equal(account.rocketPaint, HOST_DEFAULT_ROCKET_PAINT);
   assert.equal(account.gender, "private");
+  assert.equal(account.avatar, HOST_AVATAR_URL);
   assert.equal(account.roomItems.length, HOST_DEFAULT_ROOM_FURNITURE_IDS.length);
   assert.equal(canTravelToIsland(account, "Z"), true);
 });

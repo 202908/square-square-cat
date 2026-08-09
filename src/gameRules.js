@@ -77,6 +77,8 @@ export const ROOM_BOUNDS = {
 };
 export const SURVIVAL_DRAIN_PER_SECOND = { hunger: 0.18, thirst: 0.24 };
 export const WEATHER_MODES = ["auto", "rain", "thunder", "rainbow", "aurora"];
+export const HOST_AVATAR_URL = "/assets/host-avatar.png";
+export const MAX_AVATAR_DATA_URL_LENGTH = 70000;
 export const ISLAND_CODES = [..."ABCDEFGHIJKLMNOPQRSTUVWXYZ"];
 export const FREE_ISLAND_CODES = ISLAND_CODES.slice(0, 11);
 export const ROCKET_MAX_LEVEL = 5;
@@ -684,11 +686,20 @@ export function normalizeGender(gender) {
   return GENDER_OPTIONS.includes(gender) ? gender : "private";
 }
 
+export function normalizeAvatarDataUrl(value) {
+  const avatar = String(value || "").trim();
+  if (!avatar) return null;
+  if (avatar.length > MAX_AVATAR_DATA_URL_LENGTH) return null;
+  if (!/^data:image\/(?:png|jpeg|webp);base64,[a-z0-9+/=]+$/i.test(avatar)) return null;
+  return avatar;
+}
+
 export function createAccount(code, overrides = {}) {
   const accountCode = normalizeAccountCode(code);
   const isHost = Boolean(HOST_CODE && accountCode === HOST_CODE);
   const gender = isHost ? "private" : normalizeGender(overrides.gender);
   const catVariant = overrides.catVariant || (isHost ? "host" : pickRandomCatVariant());
+  const avatar = isHost ? HOST_AVATAR_URL : normalizeAvatarDataUrl(overrides.avatar);
   return {
     code: accountCode,
     level: isHost ? null : 1,
@@ -720,6 +731,7 @@ export function createAccount(code, overrides = {}) {
     friends: [],
     friendRequests: [],
     gender,
+    avatar,
     blindBoxPity: { month: null, draws: 0 },
     survivalMode: isHost ? "host" : null,
     hunger: 100,
@@ -729,7 +741,8 @@ export function createAccount(code, overrides = {}) {
     ...overrides,
     catVariant,
     ownedCatVariants: normalizeOwnedCatVariants(overrides.ownedCatVariants, catVariant),
-    gender
+    gender,
+    avatar
   };
 }
 

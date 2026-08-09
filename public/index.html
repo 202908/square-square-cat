@@ -51,6 +51,13 @@
               <span>? 不透露</span>
             </label>
           </div>
+          <div id="avatarRow" class="avatar-picker hidden">
+            <span>大頭照</span>
+            <button id="avatarPickButton" type="button" class="avatar-pick-button" aria-label="選擇大頭照">
+              <span id="avatarPreview" class="avatar avatar-large avatar-private"><span class="avatar-plus">+</span></span>
+            </button>
+            <input id="avatarInput" class="hidden" type="file" accept="image/png,image/jpeg,image/webp" />
+          </div>
           <p id="authHint">新帳號請用 1 到 10 個英文字或數字。</p>
           <div class="row">
             <button id="authSubmitButton" type="submit" class="primary-button" disabled>下一步</button>

@@ -15,6 +15,7 @@ import {
   HOST_CODE,
   HOST_DEFAULT_HOUSE,
   HOST_DEFAULT_INVENTORY,
+  HOST_AVATAR_URL,
   HOST_DEFAULT_ROCKET_PAINT,
   HOST_DEFAULT_ROOM_FURNITURE_IDS,
   HOST_PASSWORD,
@@ -59,6 +60,7 @@ import {
   MONTHLY_CAT_VARIANTS,
   blindBoxStateForAccount,
   normalizeGender,
+  normalizeAvatarDataUrl,
   normalizeOwnedCatVariants,
   normalizeIslandCode,
   normalizeWeatherMode,
@@ -177,10 +179,14 @@ function handleConnection(socket) {
     const id = sockets.get(socket);
     sockets.delete(socket);
     if (id && sessions.has(id)) {
-      detachFromStack(sessions.get(id).player);
+      const closingSession = sessions.get(id);
+      detachFromStack(closingSession.player);
       FERRIS.platformGuests = FERRIS.platformGuests.filter((guestId) => guestId !== id);
       clearHouseVisitRequestsFor(id);
       clearIslandInvitesFor(id);
+      if (!closingSession.persistent) {
+        cleanupGuestFriendLinks(closingSession.account.code);
+      }
       sessions.delete(id);
       broadcast("notice", { message: "一隻方塊貓離開了星球。" });
     }
@@ -352,6 +358,11 @@ async function loadData() {
         account.gender = normalizedGender;
         changedAccounts = true;
       }
+      const normalizedAvatar = account.isHost ? HOST_AVATAR_URL : normalizeAvatarDataUrl(account.avatar);
+      if (account.avatar !== normalizedAvatar) {
+        account.avatar = normalizedAvatar;
+        changedAccounts = true;
+      }
       if (!Array.isArray(account.claimedLevelRewards)) {
         account.claimedLevelRewards = [];
         changedAccounts = true;
@@ -430,7 +441,8 @@ function contentType(filePath) {
     ".html": "text/html; charset=utf-8",
     ".css": "text/css; charset=utf-8",
     ".js": "text/javascript; charset=utf-8",
-    ".json": "application/json; charset=utf-8"
+    ".json": "application/json; charset=utf-8",
+    ".png": "image/png"
   }[ext] || "application/octet-stream";
 }
 
@@ -438,7 +450,7 @@ function handleMessage(socket, message) {
   const sessionId = sockets.get(socket);
   const session = sessions.get(sessionId);
 
-  if (message.type === "createAccount") return createNewAccount(socket, message.code, Boolean(message.prefers2D), message.gender);
+  if (message.type === "createAccount") return createNewAccount(socket, message.code, Boolean(message.prefers2D), message.gender, message.avatar);
   if (message.type === "login") return loginAccount(socket, message.code, message.hostPassword);
   if (message.type === "guest") return enterWorld(socket, makeGuestAccount({ prefers2D: Boolean(message.prefers2D) }), false);
 
@@ -650,7 +662,7 @@ function handleMessage(socket, message) {
   }
 }
 
-function createNewAccount(socket, rawCode, prefers2D = false, gender = "private") {
+function createNewAccount(socket, rawCode, prefers2D = false, gender = "private", avatar = null) {
   const code = String(rawCode || "").trim();
   if (code !== HOST_CODE && !isValidNewAccountCode(code)) {
     send(socket, "authError", { message: "帳號只能是 1 到 10 個英文字或數字。" });
@@ -660,7 +672,7 @@ function createNewAccount(socket, rawCode, prefers2D = false, gender = "private"
     send(socket, "authError", { message: "這個帳號已存在，請改一串亂碼。" });
     return;
   }
-  accounts[code] = createAccount(code, { prefers2D, gender: normalizeGender(gender) });
+  accounts[code] = createAccount(code, { prefers2D, gender: normalizeGender(gender), avatar: normalizeAvatarDataUrl(avatar) });
   saveAccounts();
   enterWorld(socket, accounts[code], true, { announceNewAccount: true });
 }
@@ -812,6 +824,7 @@ function buildStateForSession(viewer) {
       isHost: session.account.isHost,
       level: session.account.level,
       gender: session.account.gender || "private",
+      avatar: session.account.avatar || null,
       survivalMode: session.account.survivalMode,
       hunger: session.account.hunger,
       thirst: session.account.thirst,
@@ -1733,7 +1746,8 @@ function handleSetSurvivalMode(socket, session, mode) {
 
 function handleAddFriend(socket, session, friendCode) {
   const code = String(friendCode || "").trim();
-  const targetAccount = accounts[code];
+  const targetSession = findSessionByAccountCode(code);
+  const targetAccount = targetSession?.account || accounts[code];
   if (!targetAccount) {
     send(socket, "notice", { message: "找不到這個好友帳號。" });
     return;
@@ -1752,13 +1766,14 @@ function handleAddFriend(socket, session, friendCode) {
     return;
   }
   targetAccount.friendRequests.push(session.account.code);
-  accounts[targetAccount.code] = targetAccount;
-  saveAccounts();
-  const targetSession = findSessionByAccountCode(targetAccount.code);
   if (targetSession) {
     targetSession.account = targetAccount;
+    persistSessionAccount(targetSession);
     sendAccount(targetSession.socket, targetSession.account);
     send(targetSession.socket, "notice", { message: `${displayNameFor(session.account)} 想加你為好友。` });
+  } else {
+    accounts[targetAccount.code] = targetAccount;
+    saveAccounts();
   }
   send(socket, "notice", { message: "好友申請已送出，等對方同意。" });
 }
@@ -2526,13 +2541,39 @@ function blindBoxPayload(account) {
 
 function profilesForCodes(codes) {
   return (codes || []).map((code) => {
-    const account = accounts[code];
+    const account = findSessionByAccountCode(code)?.account || accounts[code];
     if (!account) return null;
     return {
       code: account.code,
-      gender: account.gender || "private"
+      gender: account.gender || "private",
+      avatar: account.avatar || null
     };
   }).filter(Boolean);
+}
+
+function cleanupGuestFriendLinks(guestCode) {
+  let persistentChanged = false;
+  for (const account of Object.values(accounts)) {
+    const friends = (account.friends || []).filter((code) => code !== guestCode);
+    const friendRequests = (account.friendRequests || []).filter((code) => code !== guestCode);
+    if (friends.length !== (account.friends || []).length || friendRequests.length !== (account.friendRequests || []).length) {
+      account.friends = friends;
+      account.friendRequests = friendRequests;
+      persistentChanged = true;
+    }
+  }
+  for (const session of sessions.values()) {
+    if (session.account.code === guestCode) continue;
+    const friends = (session.account.friends || []).filter((code) => code !== guestCode);
+    const friendRequests = (session.account.friendRequests || []).filter((code) => code !== guestCode);
+    if (friends.length !== (session.account.friends || []).length || friendRequests.length !== (session.account.friendRequests || []).length) {
+      session.account.friends = friends;
+      session.account.friendRequests = friendRequests;
+      persistSessionAccount(session);
+      sendAccount(session.socket, session.account);
+    }
+  }
+  if (persistentChanged) saveAccounts();
 }
 
 function sendAccount(socket, account) {

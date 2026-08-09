@@ -157,6 +157,123 @@ select {
   background: linear-gradient(135deg, #62b7ff 0 48%, #ff8fcb 52% 100%);
 }
 
+.avatar-picker {
+  display: grid;
+  gap: 8px;
+  color: var(--text);
+}
+
+.avatar-picker > span {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.avatar-pick-button {
+  width: 86px;
+  height: 86px;
+  min-height: 86px;
+  padding: 0;
+  border-radius: 999px;
+}
+
+.avatar {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  border: 2px solid rgba(255, 255, 255, 0.72);
+  border-radius: 999px;
+  overflow: hidden;
+  background: linear-gradient(135deg, #62b7ff, #ff8fcb);
+  vertical-align: middle;
+}
+
+.avatar-large {
+  width: 78px;
+  height: 78px;
+}
+
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatar-default-cat::before {
+  content: "";
+  position: absolute;
+  inset: 17% 15% 13%;
+  border-radius: 12px;
+  background: #fff8ef;
+  box-shadow: inset 0 -10px rgba(255, 197, 220, 0.28);
+}
+
+.avatar-default-cat::after {
+  content: "•ᴗ•";
+  position: relative;
+  color: #211a16;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.avatar-large.avatar-default-cat::after {
+  font-size: 20px;
+}
+
+.avatar-ear {
+  position: absolute;
+  top: 8%;
+  width: 22%;
+  height: 26%;
+  background: #fff8ef;
+  border-radius: 5px 5px 2px 2px;
+  transform: rotate(45deg);
+}
+
+.avatar-ear-left {
+  left: 22%;
+}
+
+.avatar-ear-right {
+  right: 22%;
+}
+
+.avatar-plus {
+  position: absolute;
+  right: 6px;
+  bottom: 4px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--accent-strong);
+  color: #05150e;
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.avatar-gender {
+  position: absolute;
+  left: -1px;
+  bottom: -1px;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  font-size: 11px;
+}
+
+.avatar-name-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .hidden {
   display: none !important;
 }

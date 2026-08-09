@@ -51,7 +51,8 @@ const state = {
   jump: false,
   flyY: 0,
   authMode: "create",
-  pendingHostCode: null
+  pendingHostCode: null,
+  pendingAvatar: null
 };
 
 const els = {
@@ -69,6 +70,10 @@ const els = {
   prefer2D: document.querySelector("#prefer2D"),
   twoDPreferenceRow: document.querySelector("#twoDPreferenceRow"),
   genderRow: document.querySelector("#genderRow"),
+  avatarRow: document.querySelector("#avatarRow"),
+  avatarPickButton: document.querySelector("#avatarPickButton"),
+  avatarPreview: document.querySelector("#avatarPreview"),
+  avatarInput: document.querySelector("#avatarInput"),
   authSubmitButton: document.querySelector("#authSubmitButton"),
   authError: document.querySelector("#authError"),
   cancelAuth: document.querySelector("#cancelAuth"),
@@ -222,10 +227,27 @@ function bindUi() {
     if (state.authMode === "create") {
       payload.prefers2D = els.prefer2D.checked;
       payload.gender = document.querySelector("input[name='genderChoice']:checked")?.value || "private";
+      payload.avatar = state.pendingAvatar;
     }
     if (send(state.authMode === "create" ? "createAccount" : "login", payload)) {
       showAuthStatus("正在登入...", false);
     }
+  });
+  els.avatarPickButton.addEventListener("click", () => els.avatarInput.click());
+  els.avatarInput.addEventListener("change", async () => {
+    const file = els.avatarInput.files?.[0];
+    if (!file) return;
+    try {
+      state.pendingAvatar = await makeAvatarDataUrl(file);
+      updateAvatarPreview();
+    } catch (error) {
+      state.pendingAvatar = null;
+      updateAvatarPreview();
+      showAuthStatus(error.message || "大頭照讀取失敗。", true);
+    }
+  });
+  document.querySelectorAll("input[name='genderChoice']").forEach((input) => {
+    input.addEventListener("change", updateAvatarPreview);
   });
 
   window.addEventListener("keydown", (event) => {
@@ -354,9 +376,13 @@ function openAuthForm(mode) {
   els.authError.classList.add("hidden");
   els.accountCode.value = "";
   els.prefer2D.checked = false;
+  state.pendingAvatar = null;
+  els.avatarInput.value = "";
   document.querySelector("input[name='genderChoice'][value='private']").checked = true;
   els.twoDPreferenceRow.classList.toggle("hidden", mode !== "create");
   els.genderRow.classList.toggle("hidden", mode !== "create");
+  els.avatarRow.classList.toggle("hidden", mode !== "create");
+  updateAvatarPreview();
   els.authLabel.textContent = mode === "create" ? "創建新帳號亂碼" : "輸入已有帳號亂碼";
   els.authHint.textContent = mode === "create"
     ? "新帳號請用 1 到 10 個英文字或數字。"
@@ -461,7 +487,7 @@ function updateAccount(message) {
   state.onlinePlayers = message.onlinePlayers || state.onlinePlayers;
   state.friendProfiles = profilesByCode(message.friendProfiles || []);
   state.friendRequestProfiles = profilesByCode(message.friendRequestProfiles || []);
-  els.accountName.innerHTML = `${genderBadgeHtml(state.account.gender)}${escapeHtml(state.account.code)}`;
+  els.accountName.innerHTML = avatarNameHtml(state.account.code, state.account);
   els.levelText.textContent = state.account.isHost ? "主機" : `Lv. ${state.account.level}`;
   els.coinAmount.textContent = state.account.isHost ? "金幣 ∞" : `金幣 ${state.account.coins}`;
   els.diamondAmount.textContent = state.account.isHost ? "鑽石 ∞" : `鑽石 ${Number(state.account.diamonds || 0)}`;
@@ -527,6 +553,10 @@ function friendProfile(code) {
   return state.friendProfiles?.[code] || state.friendRequestProfiles?.[code] || null;
 }
 
+function selectedGender() {
+  return document.querySelector("input[name='genderChoice']:checked")?.value || "private";
+}
+
 function genderMeta(gender) {
   if (gender === "male") return { symbol: "♂", className: "gender-badge-male", label: "男生" };
   if (gender === "female") return { symbol: "♀", className: "gender-badge-female", label: "女生" };
@@ -536,6 +566,85 @@ function genderMeta(gender) {
 function genderBadgeHtml(gender) {
   const meta = genderMeta(gender);
   return `<span class="gender-badge ${meta.className}" title="${meta.label}" aria-label="${meta.label}">${meta.symbol}</span>`;
+}
+
+function avatarHtml(profile = {}, label = "玩家", options = {}) {
+  const gender = profile?.gender || "private";
+  const avatar = profile?.avatar || null;
+  const meta = genderMeta(gender);
+  const id = options.id ? ` id="${escapeHtml(options.id)}"` : "";
+  const sizeClass = options.large ? " avatar-large" : "";
+  const plus = options.plus ? `<span class="avatar-plus">+</span>` : "";
+  const badge = `<span class="gender-badge ${meta.className} avatar-gender" title="${meta.label}" aria-label="${meta.label}">${meta.symbol}</span>`;
+  if (avatar) {
+    return `<span${id} class="avatar${sizeClass} avatar-${escapeHtml(gender)}"><img src="${escapeHtml(avatar)}" alt="${escapeHtml(label)}的大頭照" />${badge}${plus}</span>`;
+  }
+  return `
+    <span${id} class="avatar${sizeClass} avatar-default-cat avatar-${escapeHtml(gender)}" aria-label="${escapeHtml(label)}的大頭照">
+      <span class="avatar-ear avatar-ear-left"></span>
+      <span class="avatar-ear avatar-ear-right"></span>
+      ${badge}
+      ${plus}
+    </span>
+  `;
+}
+
+function avatarNameHtml(code, profile = null) {
+  const displayProfile = profile || friendProfile(code) || { gender: "private", avatar: null };
+  return `<span class="avatar-name-row">${avatarHtml(displayProfile, code)}<span>${escapeHtml(code)}</span></span>`;
+}
+
+function updateAvatarPreview() {
+  if (!els.avatarPreview) return;
+  els.avatarPreview.outerHTML = avatarHtml(
+    { avatar: state.pendingAvatar, gender: selectedGender() },
+    "你",
+    { large: true, plus: true, id: "avatarPreview" }
+  );
+  els.avatarPreview = document.querySelector("#avatarPreview");
+}
+
+function makeAvatarDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      reject(new Error("大頭照要用 PNG、JPG 或 WEBP 圖片。"));
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      reject(new Error("大頭照圖片太大了，請換小一點的圖片。"));
+      return;
+    }
+    const reader = new FileReader();
+    reader.addEventListener("error", () => reject(new Error("大頭照讀取失敗。")));
+    reader.addEventListener("load", () => {
+      const image = new Image();
+      image.addEventListener("error", () => reject(new Error("大頭照圖片格式讀不到。")));
+      image.addEventListener("load", () => {
+        const size = Math.min(image.naturalWidth, image.naturalHeight);
+        const sx = (image.naturalWidth - size) / 2;
+        const sy = (image.naturalHeight - size) / 2;
+        const canvas = document.createElement("canvas");
+        canvas.width = 160;
+        canvas.height = 160;
+        const ctx = canvas.getContext("2d");
+        ctx.clearRect(0, 0, 160, 160);
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(80, 80, 80, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.drawImage(image, sx, sy, size, size, 0, 0, 160, 160);
+        ctx.restore();
+        const dataUrl = canvas.toDataURL("image/png");
+        if (dataUrl.length > 70000) {
+          reject(new Error("大頭照壓縮後還是太大，請換一張比較小的圖片。"));
+          return;
+        }
+        resolve(dataUrl);
+      });
+      image.src = reader.result;
+    });
+    reader.readAsDataURL(file);
+  });
 }
 
 function rocketLevelRequiredForIsland(island) {
@@ -3805,7 +3914,7 @@ function showFriendsModal() {
       ${friendRequests.map((friend) => `
         <div class="list-item">
           <div class="split">
-            <strong>${genderBadgeHtml(friendProfile(friend)?.gender)}${escapeHtml(friend)}</strong>
+            <strong>${avatarNameHtml(friend)}</strong>
             <span>想加你為好友</span>
           </div>
           <div class="row">
@@ -3841,7 +3950,7 @@ function showFriendsModal() {
     <div class="list">
       ${(state.account.friends || []).map((friend) => `
         <div class="list-item">
-          <div class="split"><strong>${genderBadgeHtml(friendProfile(friend)?.gender)}${escapeHtml(friend)}</strong><button data-team-invite="${escapeHtml(friend)}">組隊</button></div>
+          <div class="split"><strong>${avatarNameHtml(friend)}</strong><button data-team-invite="${escapeHtml(friend)}">組隊</button></div>
           <div class="row">
             <button data-summon-friend="${escapeHtml(friend)}">召喚</button>
             <button data-gift-friend="${escapeHtml(friend)}">贈送</button>
