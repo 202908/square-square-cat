@@ -367,6 +367,7 @@ select {
 
 .chat-decoration-mark.chat-decoration-strawberry {
   position: relative;
+  vertical-align: -1px;
   transform-origin: 50% 80%;
   animation: strawberry-wiggle 720ms ease-in-out;
 }
@@ -397,12 +398,12 @@ select {
 }
 
 @keyframes strawberry-wiggle {
-  0% { transform: rotate(0deg); }
-  18% { transform: rotate(-12deg); }
-  36% { transform: rotate(12deg); }
-  54% { transform: rotate(12deg); }
-  72% { transform: rotate(-10deg); }
-  100% { transform: rotate(0deg); }
+  0% { transform: translateY(-3px) rotate(0deg); }
+  18% { transform: translateY(-3px) rotate(-12deg); }
+  36% { transform: translateY(-3px) rotate(12deg); }
+  54% { transform: translateY(-3px) rotate(12deg); }
+  72% { transform: translateY(-3px) rotate(-10deg); }
+  100% { transform: translateY(-3px) rotate(0deg); }
 }
 
 .chat-error {
