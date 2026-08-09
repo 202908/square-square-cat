@@ -644,10 +644,6 @@ function makeAvatarDataUrl(file) {
       reject(new Error("大頭照只能用 PNG、JPG 或 WEBP，不能用 GIF 或影片。"));
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      reject(new Error("大頭照圖片太大了，請換小一點的圖片。"));
-      return;
-    }
     const reader = new FileReader();
     reader.addEventListener("error", () => reject(new Error("大頭照讀取失敗。")));
     reader.addEventListener("load", () => {
@@ -658,22 +654,12 @@ function makeAvatarDataUrl(file) {
         const sx = (image.naturalWidth - size) / 2;
         const sy = (image.naturalHeight - size) / 2;
         const canvas = document.createElement("canvas");
-        canvas.width = 160;
-        canvas.height = 160;
+        canvas.width = 256;
+        canvas.height = 256;
         const ctx = canvas.getContext("2d");
-        ctx.clearRect(0, 0, 160, 160);
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(80, 80, 80, 0, Math.PI * 2);
-        ctx.clip();
-        ctx.drawImage(image, sx, sy, size, size, 0, 0, 160, 160);
-        ctx.restore();
-        const dataUrl = canvas.toDataURL("image/png");
-        if (dataUrl.length > 70000) {
-          reject(new Error("大頭照壓縮後還是太大，請換一張比較小的圖片。"));
-          return;
-        }
-        resolve(dataUrl);
+        ctx.clearRect(0, 0, 256, 256);
+        ctx.drawImage(image, sx, sy, size, size, 0, 0, 256, 256);
+        resolve(canvas.toDataURL("image/webp", 0.82));
       });
       image.src = reader.result;
     });
