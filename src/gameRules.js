@@ -768,6 +768,22 @@ export function parseChatMessage(rawText) {
   };
 }
 
+export function applyChatMessagePermissions(parsedMessage, account) {
+  const parsed = parsedMessage || {};
+  if (parsed.error || account?.isHost) return parsed;
+  const decorations = (Array.isArray(parsed.decorations) ? parsed.decorations : [])
+    .filter((decoration) => decoration?.id && decoration.id !== "strawberry");
+  const decoration = decorations[0] || null;
+  const textColor = parsed.color && CHAT_TEXT_COLORS[parsed.color] ? parsed.color : null;
+  return {
+    ...parsed,
+    color: textColor || decoration?.id || null,
+    colorValue: textColor ? CHAT_TEXT_COLORS[textColor] : decoration?.color || null,
+    decoration,
+    decorations
+  };
+}
+
 export function applyHostChatColor(parsedMessage, account, currentIndex = 0) {
   const parsed = parsedMessage || {};
   const index = Math.max(0, Number(currentIndex || 0));

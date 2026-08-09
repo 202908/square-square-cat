@@ -36,6 +36,7 @@ import {
   WEATHER_LABELS,
   WEATHER_MODES,
   addFriend,
+  applyChatMessagePermissions,
   applyHostChatColor,
   applyHousePaint,
   areHouseFriends,
@@ -3026,7 +3027,8 @@ function incrementAchievement(session, key, amount = 1) {
 }
 
 function addChat(session, rawText) {
-  const hostColored = applyHostChatColor(parseChatMessage(rawText), session.account, session.player.hostChatColorIndex);
+  const permitted = applyChatMessagePermissions(parseChatMessage(rawText), session.account);
+  const hostColored = applyHostChatColor(permitted, session.account, session.player.hostChatColorIndex);
   session.player.hostChatColorIndex = hostColored.nextIndex;
   const parsed = hostColored.message;
   if (parsed.error) {

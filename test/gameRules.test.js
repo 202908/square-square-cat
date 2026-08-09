@@ -33,6 +33,7 @@ import {
   SHOP_ITEMS,
   WEATHER_MODES,
   addFriend,
+  applyChatMessagePermissions,
   applyHostChatColor,
   accountWealthScore,
   applyHousePaint,
@@ -171,6 +172,21 @@ test("chat suffix can stack up to five effects in written order", () => {
   assert.equal(parsed.color, "pink");
   assert.equal(parsed.visibility, "friends");
   assert.deepEqual(parsed.decorations.map((decoration) => decoration.id), ["planet", "strawberry"]);
+});
+
+test("strawberry chat decoration is host-only", () => {
+  const player = createAccount("abc");
+  const host = createAccount("host", { isHost: true });
+
+  const playerMessage = applyChatMessagePermissions(parseChatMessage("hello@(pink)(strawberry)"), player);
+  assert.equal(playerMessage.color, "pink");
+  assert.equal(playerMessage.decoration, null);
+  assert.deepEqual(playerMessage.decorations, []);
+
+  const hostMessage = applyChatMessagePermissions(parseChatMessage("hello@(pink)(strawberry)"), host);
+  assert.equal(hostMessage.color, "pink");
+  assert.equal(hostMessage.decoration.id, "strawberry");
+  assert.deepEqual(hostMessage.decorations.map((decoration) => decoration.id), ["strawberry"]);
 });
 
 test("chat suffix rejects more than five effects", () => {
