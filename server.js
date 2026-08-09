@@ -145,6 +145,9 @@ let survivalPickups = [];
 let survivalHazards = [];
 let worldBushes = makeHiddenBushes();
 let worldWeather = "auto";
+let autoWeather = "auto";
+let nextAutoWeatherChangeAt = Date.now() + 15000;
+let activeWeatherChangedAt = Date.now() / 1000;
 
 await loadData();
 
@@ -749,6 +752,7 @@ function sanitizeInput(input = {}, hasWings) {
 }
 
 function tickWorld() {
+  updateAutoWeather();
   activeEffects = activeEffects.filter((effect) => Date.now() < effect.expiresAt);
   updateSwing(1 / TICK_RATE);
   updateFerris(1 / TICK_RATE);
@@ -771,7 +775,10 @@ function buildStateForSession(viewer) {
     effects: activeEffects.filter((effect) => effectVisibleToSession(viewer, effect)),
     survivalPickups: [],
     survivalHazards: [],
-    weather: worldWeather,
+    weather: effectiveWorldWeather(),
+    weatherMode: worldWeather,
+    weatherStartedAt: activeWeatherChangedAt,
+    serverTime: Date.now() / 1000,
     totalAccounts: Object.keys(accounts).length,
     onlinePlayers: viewer.account.isHost ? onlinePlayersForHost() : undefined,
     bushes: worldBushes,
@@ -2500,7 +2507,9 @@ function sendAccount(socket, account) {
     ...accountPayload(account),
     levelRewards: LEVEL_REWARDS,
     levelTasks: LEVEL_TASKS,
-    weather: worldWeather,
+    weather: effectiveWorldWeather(),
+    weatherMode: worldWeather,
+    weatherStartedAt: activeWeatherChangedAt,
     weatherModes: WEATHER_MODES,
     weatherLabels: WEATHER_LABELS,
     titleCatalog,
@@ -2635,9 +2644,60 @@ function handleAdminSetWeather(socket, session, mode) {
     send(socket, "notice", { message: "只有主機可以切換天氣。" });
     return;
   }
+  const previousWeather = effectiveWorldWeather();
   worldWeather = normalizeWeatherMode(mode);
+  if (worldWeather === "auto") {
+    autoWeather = "auto";
+    nextAutoWeatherChangeAt = Date.now() + 15000;
+  }
+  if (effectiveWorldWeather() !== previousWeather) {
+    activeWeatherChangedAt = Date.now() / 1000;
+  }
   sendAccount(socket, session.account);
   broadcast("notice", { message: `主機把天氣切換成「${WEATHER_LABELS[worldWeather]}」。` });
+}
+
+function effectiveWorldWeather() {
+  return worldWeather === "auto" ? autoWeather : worldWeather;
+}
+
+function updateAutoWeather() {
+  if (worldWeather !== "auto" || Date.now() < nextAutoWeatherChangeAt) return;
+  const nextWeather = pickAutoWeather();
+  if (nextWeather !== autoWeather) {
+    autoWeather = nextWeather;
+    activeWeatherChangedAt = Date.now() / 1000;
+  }
+  nextAutoWeatherChangeAt = Date.now() + autoWeatherDurationMs(nextWeather);
+}
+
+function pickAutoWeather() {
+  const choices = [
+    ["auto", 7],
+    ["rain", 3],
+    ["thunder", 1.2],
+    ["rainbow", 1.1],
+    ["aurora", 0.9]
+  ];
+  const total = choices.reduce((sum, [, weight]) => sum + weight, 0);
+  let roll = Math.random() * total;
+  for (const [weather, weight] of choices) {
+    roll -= weight;
+    if (roll <= 0) return weather;
+  }
+  return "auto";
+}
+
+function autoWeatherDurationMs(weather) {
+  const ranges = {
+    auto: [45000, 90000],
+    rain: [35000, 65000],
+    thunder: [25000, 45000],
+    rainbow: [30000, 50000],
+    aurora: [35000, 65000]
+  };
+  const [min, max] = ranges[weather] || ranges.auto;
+  return min + Math.random() * (max - min);
 }
 
 function titlePlayers() {

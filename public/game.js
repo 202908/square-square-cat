@@ -10,6 +10,9 @@ const state = {
   levelRewards: [],
   levelTasks: [],
   weather: "auto",
+  weatherMode: "auto",
+  weatherStartedAt: 0,
+  serverTimeOffset: null,
   weatherModes: ["auto", "rain", "thunder", "rainbow", "aurora"],
   weatherLabels: { auto: "晴天/日夜", rain: "下雨", thunder: "打雷", rainbow: "彩虹", aurora: "極光" },
   islandCodes: [..."ABCDEFGHIJKLMNOPQRSTUVWXYZ"],
@@ -442,6 +445,8 @@ function updateAccount(message) {
   state.levelRewards = message.levelRewards || state.levelRewards;
   state.levelTasks = message.levelTasks || state.levelTasks;
   state.weather = message.weather || state.weather;
+  state.weatherMode = message.weatherMode || state.weatherMode || state.weather;
+  state.weatherStartedAt = Number(message.weatherStartedAt || state.weatherStartedAt || 0);
   state.weatherModes = message.weatherModes || state.weatherModes;
   state.weatherLabels = message.weatherLabels || state.weatherLabels;
   state.islandCodes = message.islandCodes || state.islandCodes;
@@ -948,6 +953,11 @@ function updateWorldState(message) {
   const effects = message.effects || [];
   const previousWeather = state.weather;
   state.weather = message.weather || state.weather;
+  state.weatherMode = message.weatherMode || state.weatherMode || state.weather;
+  state.weatherStartedAt = Number(message.weatherStartedAt || state.weatherStartedAt || 0);
+  if (Number.isFinite(Number(message.serverTime))) {
+    state.serverTimeOffset = Number(message.serverTime) - performance.now() / 1000;
+  }
   state.islandCodes = message.islandCodes || state.islandCodes;
   state.hostIslandCode = message.hostIslandCode || state.hostIslandCode;
   state.freeIslandCodes = message.freeIslandCodes || state.freeIslandCodes;
@@ -2398,7 +2408,7 @@ function drawFlatWorld() {
   ctx.save();
   ctx.scale(dpr, dpr);
   ctx.clearRect(0, 0, width, height);
-  drawFlatSky(ctx, width, height, getDayFactor());
+  drawFlatSky(ctx, width, height, weatherDayFactor());
 
   const me = state.players.get(state.myId);
   if (!me) {
@@ -2472,6 +2482,10 @@ function drawFlatSky(ctx, width, height, dayFactor) {
       ctx.fillRect(x, y, 2, 2);
     }
   }
+  if (weather === "rain" || weather === "thunder") {
+    ctx.fillStyle = `rgba(38, 56, 79, ${0.28 * weatherTransitionAmount()})`;
+    ctx.fillRect(0, 0, width, height);
+  }
   drawFlatWeather(ctx, width, height, weather);
 }
 
@@ -2486,11 +2500,12 @@ function drawFlatCloud(ctx, x, y, scale) {
 function drawFlatWeather(ctx, width, height, weather) {
   if (weather === "rain" || weather === "thunder") {
     ctx.save();
+    ctx.globalAlpha = weatherTransitionAmount();
     ctx.strokeStyle = "rgba(115, 183, 230, 0.58)";
     ctx.lineWidth = 2;
     for (let i = 0; i < 46; i += 1) {
-      const x = (i * 61 + Math.floor((clock?.elapsedTime || 0) * 140)) % width;
-      const y = (i * 37 + Math.floor((clock?.elapsedTime || 0) * 220)) % height;
+      const x = (i * 61 + Math.floor(synchronizedWorldTime() * 140)) % width;
+      const y = (i * 37 + Math.floor(synchronizedWorldTime() * 220)) % height;
       ctx.beginPath();
       ctx.moveTo(x, y);
       ctx.lineTo(x - 8, y + 28);
@@ -2540,7 +2555,7 @@ function drawFlatRainbow(ctx, width, height) {
 }
 
 function drawFlatAurora(ctx, width) {
-  const time = clock?.elapsedTime || 0;
+  const time = synchronizedWorldTime();
   ctx.save();
   ctx.globalAlpha = 0.46;
   ["#67d88a", "#62b7ff", "#ff8fcb"].forEach((color, band) => {
@@ -3032,10 +3047,15 @@ function hexColor(value) {
 }
 
 function getDayFactor() {
-  const phase = ((clock?.elapsedTime || 0) + DAY_CYCLE_SECONDS * 0.18) % DAY_CYCLE_SECONDS / DAY_CYCLE_SECONDS;
+  const phase = (synchronizedWorldTime() + DAY_CYCLE_SECONDS * 0.18) % DAY_CYCLE_SECONDS / DAY_CYCLE_SECONDS;
   const sunrise = smoothStep(0.03, 0.18, phase);
   const sunset = smoothStep(0.55, 0.72, phase);
   return Math.max(0, Math.min(1, sunrise * (1 - sunset)));
+}
+
+function synchronizedWorldTime() {
+  if (state.serverTimeOffset === null) return clock?.elapsedTime || 0;
+  return performance.now() / 1000 + state.serverTimeOffset;
 }
 
 function currentWeather() {
@@ -3046,13 +3066,20 @@ function weatherDayFactor() {
   const weather = currentWeather();
   if (weather === "rainbow") return 1;
   if (weather === "aurora") return 0;
-  if (weather === "rain" || weather === "thunder") return Math.min(getDayFactor(), 0.32);
+  if (weather === "rain" || weather === "thunder") {
+    return getDayFactor() * (1 - weatherTransitionAmount() * 0.68);
+  }
   return getDayFactor();
+}
+
+function weatherTransitionAmount(seconds = 12) {
+  if (!state.weatherStartedAt) return 1;
+  return smoothStep(0, seconds, synchronizedWorldTime() - Number(state.weatherStartedAt || 0));
 }
 
 function lightningFlash() {
   if (currentWeather() !== "thunder") return 0;
-  const time = clock?.elapsedTime || 0;
+  const time = synchronizedWorldTime();
   const pulse = Math.sin(time * 2.1) + Math.sin(time * 5.7);
   return pulse > 1.55 ? 1 : 0;
 }
@@ -3069,7 +3096,7 @@ function updateSky(dt) {
   const rainDarkness = weather === "rain" || weather === "thunder" ? 0.38 : 0;
   const flash = lightningFlash();
   const skyColor = new THREE.Color(0x0b1018).lerp(new THREE.Color(0x86d6ff), dayFactor);
-  if (rainDarkness) skyColor.lerp(new THREE.Color(0x26384f), rainDarkness);
+  if (rainDarkness) skyColor.lerp(new THREE.Color(0x26384f), rainDarkness * weatherTransitionAmount());
   if (flash) skyColor.lerp(new THREE.Color(0xffffff), 0.7);
   const fogColor = new THREE.Color(0x0b1018).lerp(new THREE.Color(0xc8f0ff), dayFactor);
   scene.background = skyColor;
@@ -3092,12 +3119,13 @@ function updateSky(dt) {
     sunMesh.position.set(58, 58, -62);
   }
   if (cloudGroup) {
-    cloudGroup.visible = dayFactor > 0.03 || weather === "rain" || weather === "thunder";
+    const stormFade = weather === "rain" || weather === "thunder" ? weatherTransitionAmount() : 0;
+    cloudGroup.visible = dayFactor > 0.03 || stormFade > 0.02;
     for (const cloud of cloudGroup.children) {
       cloud.position.x += Number(cloud.userData.speed || 0.06) * dt * 18;
       if (cloud.position.x > 96) cloud.position.x = -96;
       for (const puff of cloud.children) {
-        puff.material.opacity = weather === "rain" || weather === "thunder" ? 0.72 : 0.78 * dayFactor;
+        puff.material.opacity = weather === "rain" || weather === "thunder" ? 0.72 * stormFade : 0.78 * dayFactor;
         puff.material.color.setHex(weather === "rain" || weather === "thunder" ? 0x9eb1c7 : 0xffffff);
       }
     }
@@ -3109,6 +3137,7 @@ function updateWeatherEffects(dt, weather) {
   if (rainGroup) {
     rainGroup.visible = weather === "rain" || weather === "thunder";
     if (rainGroup.visible) {
+      rainGroup.material.opacity = 0.46 * weatherTransitionAmount();
       const positions = rainGroup.geometry.attributes.position;
       for (let i = 1; i < positions.count; i += 2) {
         const topY = positions.getY(i - 1) - dt * 36;
@@ -3128,7 +3157,7 @@ function updateWeatherEffects(dt, weather) {
   if (rainbowGroup) {
     rainbowGroup.visible = weather === "rainbow";
     if (rainbowGroup.visible) {
-      const time = clock?.elapsedTime || 0;
+      const time = synchronizedWorldTime();
       rainbowGroup.children.forEach((child, index) => {
         if (!child.material) return;
         child.material.opacity = child.geometry?.type === "TubeGeometry"
@@ -3141,7 +3170,7 @@ function updateWeatherEffects(dt, weather) {
     auroraGroup.visible = weather === "aurora";
     for (const ribbon of auroraGroup.children) {
       const phase = Number(ribbon.userData.phase || 0);
-      const time = clock?.elapsedTime || 0;
+      const time = synchronizedWorldTime();
       const positions = ribbon.geometry.attributes.position;
       const basePositions = ribbon.userData.basePositions || [];
       for (let i = 0; i < positions.count; i += 1) {
@@ -3973,8 +4002,9 @@ function showAdminModal() {
   const playerOptions = (state.titlePlayers || []).map((player) => `<option value="${escapeHtml(player.code)}">${escapeHtml(player.code)}</option>`).join("");
   const weatherModes = state.weatherModes?.length ? state.weatherModes : ["auto", "rain", "thunder", "rainbow", "aurora"];
   const weatherLabels = state.weatherLabels || WEATHER_EFFECT_LABELS;
+  const selectedWeatherMode = state.weatherMode || state.weather;
   const weatherRows = weatherModes.map((mode) => `
-    <button class="${state.weather === mode ? "primary-button" : ""}" data-weather-mode="${escapeHtml(mode)}" type="button">
+    <button class="${selectedWeatherMode === mode ? "primary-button" : ""}" data-weather-mode="${escapeHtml(mode)}" type="button">
       ${escapeHtml(weatherLabels[mode] || WEATHER_EFFECT_LABELS[mode] || mode)}
     </button>
   `).join("");
@@ -4005,7 +4035,7 @@ function showAdminModal() {
   openModal("新增 Password", `
     <section class="list">
       <strong>天氣控制</strong>
-      <p class="muted-line">目前：${escapeHtml(weatherLabels[state.weather] || WEATHER_EFFECT_LABELS[state.weather] || state.weather)}</p>
+      <p class="muted-line">主機模式：${escapeHtml(weatherLabels[selectedWeatherMode] || WEATHER_EFFECT_LABELS[selectedWeatherMode] || selectedWeatherMode)}；現在天氣：${escapeHtml(weatherLabels[state.weather] || WEATHER_EFFECT_LABELS[state.weather] || state.weather)}</p>
       <div class="row">${weatherRows}</div>
     </section>
     <form id="adminTitleForm" class="list">
