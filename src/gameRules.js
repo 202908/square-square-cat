@@ -79,6 +79,27 @@ export const SURVIVAL_DRAIN_PER_SECOND = { hunger: 0.18, thirst: 0.24 };
 export const WEATHER_MODES = ["auto", "rain", "thunder", "rainbow", "aurora"];
 export const HOST_AVATAR_URL = "/assets/host-avatar.png";
 export const MAX_AVATAR_DATA_URL_LENGTH = 500000;
+export const CHAT_TEXT_COLORS = {
+  pink: "#ff8fcb",
+  blue: "#62b7ff",
+  red: "#ff5a6c",
+  orange: "#ff9b3d",
+  yellow: "#ffd95a",
+  green: "#67d88a",
+  purple: "#b78cff",
+  white: "#ffffff",
+  black: "#111111",
+  gold: "#f7c948",
+  mint: "#8fffd2"
+};
+export const HOST_CHAT_COLOR_CYCLE = ["blue", "white", "pink"];
+export const CHAT_EASTER_EGGS = [
+  { id: "meow", name: "喵喵足跡", triggers: ["喵", "meow", "cat"], icon: "🐾" },
+  { id: "rainbow", name: "彩虹閃閃", triggers: ["彩虹", "rainbow"], icon: "🌈" },
+  { id: "moon", name: "月亮小光", triggers: ["月亮", "moon"], icon: "🌙" },
+  { id: "star", name: "星星飛出", triggers: ["星星", "star"], icon: "✨" },
+  { id: "wing", name: "翅膀飄飄", triggers: ["翅膀", "wings"], icon: "🪽" }
+];
 export const ISLAND_CODES = [..."ABCDEFGHIJKLMNOPQRSTUVWXYZ"];
 export const FREE_ISLAND_CODES = ISLAND_CODES.slice(0, 11);
 export const ROCKET_MAX_LEVEL = 5;
@@ -692,6 +713,40 @@ export function normalizeAvatarDataUrl(value) {
   if (avatar.length > MAX_AVATAR_DATA_URL_LENGTH) return null;
   if (!/^data:image\/(?:png|jpeg|webp);base64,[a-z0-9+/=]+$/i.test(avatar)) return null;
   return avatar;
+}
+
+export function parseChatMessage(rawText) {
+  const raw = String(rawText || "").slice(0, 180);
+  const colorMatch = raw.match(/@\(([a-z]+)\)\s*$/);
+  const color = colorMatch && CHAT_TEXT_COLORS[colorMatch[1]] ? colorMatch[1] : null;
+  const text = (color ? raw.slice(0, colorMatch.index) : raw).trim().slice(0, 160);
+  const lowered = text.toLowerCase();
+  const easterEgg = CHAT_EASTER_EGGS.find((egg) =>
+    egg.triggers.some((trigger) => lowered.includes(String(trigger).toLowerCase()))
+  ) || null;
+  return {
+    text,
+    color,
+    colorValue: color ? CHAT_TEXT_COLORS[color] : null,
+    easterEgg: easterEgg ? { id: easterEgg.id, name: easterEgg.name, icon: easterEgg.icon } : null
+  };
+}
+
+export function applyHostChatColor(parsedMessage, account, currentIndex = 0) {
+  const parsed = parsedMessage || {};
+  const index = Math.max(0, Number(currentIndex || 0));
+  if (!account?.isHost || parsed.color) {
+    return { message: parsed, nextIndex: index };
+  }
+  const color = HOST_CHAT_COLOR_CYCLE[index % HOST_CHAT_COLOR_CYCLE.length];
+  return {
+    message: {
+      ...parsed,
+      color,
+      colorValue: CHAT_TEXT_COLORS[color]
+    },
+    nextIndex: index + 1
+  };
 }
 
 export function createAccount(code, overrides = {}) {

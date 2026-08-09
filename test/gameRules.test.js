@@ -12,6 +12,7 @@ import {
   FURNITURE_ITEMS,
   FREE_ISLAND_CODES,
   GENDER_OPTIONS,
+  HOST_CHAT_COLOR_CYCLE,
   HOST_AVATAR_URL,
   HOST_DEFAULT_HOUSE,
   HOST_DEFAULT_INVENTORY,
@@ -30,6 +31,7 @@ import {
   SHOP_ITEMS,
   WEATHER_MODES,
   addFriend,
+  applyHostChatColor,
   accountWealthScore,
   applyHousePaint,
   areHouseFriends,
@@ -68,6 +70,7 @@ import {
   normalizeGender,
   normalizeIslandCode,
   normalizeWeatherMode,
+  parseChatMessage,
   pickRandomCatVariant,
   roomFurniturePlatforms,
   roomFurniturePlacement,
@@ -117,6 +120,34 @@ test("avatar data urls are normalized before saving to accounts", () => {
   assert.equal(normalizeAvatarDataUrl("data:video/mp4;base64,AAAA"), null);
   assert.equal(normalizeAvatarDataUrl("data:image/svg+xml;base64,PHN2Zz4="), null);
   assert.equal(normalizeAvatarDataUrl(`data:image/webp;base64,${"a".repeat(120000)}`)?.startsWith("data:image/webp"), true);
+});
+
+test("chat color suffix hides the suffix and applies a safe color", () => {
+  const parsed = parseChatMessage("hello@(pink)");
+  assert.equal(parsed.text, "hello");
+  assert.equal(parsed.color, "pink");
+  assert.equal(parsed.colorValue, "#ff8fcb");
+
+  const invalid = parseChatMessage("hello@(danger)");
+  assert.equal(invalid.text, "hello@(danger)");
+  assert.equal(invalid.color, null);
+});
+
+test("host chat cycles blue white pink unless a color suffix overrides it", () => {
+  const host = createAccount("host", { isHost: true });
+  assert.deepEqual(HOST_CHAT_COLOR_CYCLE, ["blue", "white", "pink"]);
+
+  const first = applyHostChatColor(parseChatMessage("嗨"), host, 0);
+  assert.equal(first.message.color, "blue");
+  assert.equal(first.nextIndex, 1);
+
+  const override = applyHostChatColor(parseChatMessage("嗨@(pink)"), host, first.nextIndex);
+  assert.equal(override.message.color, "pink");
+  assert.equal(override.nextIndex, 1);
+
+  const second = applyHostChatColor(parseChatMessage("嗨"), host, override.nextIndex);
+  assert.equal(second.message.color, "white");
+  assert.equal(second.nextIndex, 2);
 });
 
 test("player account gets one allowed cat skin at creation", () => {

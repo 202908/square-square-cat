@@ -21,6 +21,8 @@ const state = {
   rocketMaxLevel: 5,
   rocketUpgradeCosts: [0, 300, 700, 1200, 1800],
   coinCodes: {},
+  chatEasterEggs: [],
+  chatTextColors: {},
   titleCatalog: {},
   titleColors: {},
   titlePlayers: [],
@@ -488,6 +490,8 @@ function updateAccount(message) {
   state.rocketMaxLevel = message.rocketMaxLevel || state.rocketMaxLevel;
   state.rocketUpgradeCosts = message.rocketUpgradeCosts || state.rocketUpgradeCosts;
   state.coinCodes = message.coinCodes || state.coinCodes;
+  state.chatEasterEggs = message.chatEasterEggs || state.chatEasterEggs;
+  state.chatTextColors = message.chatTextColors || state.chatTextColors;
   state.titleCatalog = message.titleCatalog || state.titleCatalog;
   state.titleColors = message.titleColors || state.titleColors;
   state.titlePlayers = message.titlePlayers || state.titlePlayers;
@@ -4166,6 +4170,17 @@ function showAdminModal() {
         : `<button type="button" data-toggle-attack-protection="${escapeHtml(player.accountCode)}" data-enabled="${player.attackProtected ? "false" : "true"}">${player.attackProtected ? "關閉保護" : "開啟保護"}</button>`}
     </div>
   `).join("") || `<p class="muted-line">目前沒有在線玩家。</p>`;
+  const chatColorRows = Object.entries(state.chatTextColors || {}).map(([id, value]) => `
+    <span class="tag" style="color:${escapeHtml(value)}">@(${escapeHtml(id)})</span>
+  `).join(" ");
+  const chatEggRows = (state.chatEasterEggs || []).map((egg) => `
+    <div class="list-item">
+      <div class="split">
+        <strong>${escapeHtml(egg.icon || "✨")} ${escapeHtml(egg.name)}</strong>
+        <span>${escapeHtml((egg.triggers || []).join("、"))}</span>
+      </div>
+    </div>
+  `).join("") || `<p class="muted-line">目前沒有聊天彩蛋。</p>`;
   const titleRows = Object.values(state.titleCatalog || {}).map((title) => `
     <div class="list-item">
       <div class="split">
@@ -4200,6 +4215,12 @@ function showAdminModal() {
       <strong>防惡作劇保護</strong>
       <p class="muted-line">開啟保護的玩家不會被玩家打，也不能打玩家。主機固定保護，但仍然可以打別人。</p>
       ${protectionRows}
+    </section>
+    <section class="list">
+      <strong>聊天彩蛋</strong>
+      <p class="muted-line">顏色語法放在訊息最後，例如 hello@(pink)，送出後只會顯示 hello。</p>
+      <div>${chatColorRows}</div>
+      ${chatEggRows}
     </section>
     <form id="adminTitleForm" class="list">
       <strong>新增稱號</strong>
@@ -4311,9 +4332,19 @@ function closeModal() {
 
 function renderChat(chatLog) {
   els.chatLog.innerHTML = chatLog.map((message) => `
-    <div><strong>${escapeHtml(message.sender)}:</strong> ${escapeHtml(message.text)}</div>
+    <div class="${message.easterEgg ? "chat-easter-egg" : ""}">
+      <strong>${escapeHtml(message.sender)}:</strong>
+      <span style="${chatMessageStyle(message)}">${escapeHtml(message.text)}</span>
+      ${message.easterEgg ? `<span class="chat-easter-icon" title="${escapeHtml(message.easterEgg.name)}">${escapeHtml(message.easterEgg.icon || "✨")}</span>` : ""}
+    </div>
   `).join("");
   els.chatLog.scrollTop = els.chatLog.scrollHeight;
+}
+
+function chatMessageStyle(message) {
+  const color = String(message.colorValue || "");
+  if (!/^#[0-9a-f]{6}$/i.test(color)) return "";
+  return `color:${color}`;
 }
 
 function showNotice(text) {

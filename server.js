@@ -8,6 +8,8 @@ import { fileURLToPath } from "node:url";
 import {
   BLIND_BOX_BASE_DIAMOND_COST,
   COIN_TO_DIAMOND_RATE,
+  CHAT_EASTER_EGGS,
+  CHAT_TEXT_COLORS,
   DEFAULT_COIN_CODES,
   DEFAULT_TITLE_ID,
   DEFAULT_TITLES,
@@ -33,6 +35,7 @@ import {
   WEATHER_LABELS,
   WEATHER_MODES,
   addFriend,
+  applyHostChatColor,
   applyHousePaint,
   areHouseFriends,
   buyItem,
@@ -67,6 +70,7 @@ import {
   normalizeIslandCode,
   normalizeWeatherMode,
   pickRandomCatVariant,
+  parseChatMessage,
   redeemCode,
   removeFriend,
   richestIslandWealthAccountCode,
@@ -761,7 +765,8 @@ function enterWorld(socket, account, persistent, options = {}) {
       roomSlideItemId: null,
       teamId: null,
       flightLeader: null,
-      challengeLevel: 1
+      challengeLevel: 1,
+      hostChatColorIndex: 0
     }
   });
 
@@ -2761,6 +2766,8 @@ function sendAccount(socket, account) {
     titleCatalog,
     titleColors: TITLE_COLORS,
     titlePlayers: account.isHost ? titlePlayers() : undefined,
+    chatEasterEggs: account.isHost ? CHAT_EASTER_EGGS : undefined,
+    chatTextColors: account.isHost ? CHAT_TEXT_COLORS : undefined,
     onlinePlayers: account.isHost ? onlinePlayersForHost() : undefined
   });
 }
@@ -3017,10 +3024,20 @@ function incrementAchievement(session, key, amount = 1) {
 }
 
 function addChat(session, rawText) {
-  const text = String(rawText || "").trim().slice(0, 120);
+  const hostColored = applyHostChatColor(parseChatMessage(rawText), session.account, session.player.hostChatColorIndex);
+  session.player.hostChatColorIndex = hostColored.nextIndex;
+  const parsed = hostColored.message;
+  const text = parsed.text.slice(0, 120);
   if (!text) return;
   incrementAchievement(session, "chatMessages");
-  chatLog.push({ sender: session.account.code, text, at: Date.now() });
+  chatLog.push({
+    sender: session.account.code,
+    text,
+    color: parsed.color,
+    colorValue: parsed.colorValue,
+    easterEgg: parsed.easterEgg,
+    at: Date.now()
+  });
   chatLog = chatLog.slice(-30);
   broadcast("chat", { chatLog });
 }
