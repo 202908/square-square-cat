@@ -3348,9 +3348,7 @@ function showBlindBoxModal() {
           <p>${escapeHtml(drawStyle[0])}：${escapeHtml(drawStyle[1])}。抽中後會直接變成永久毛色。</p>
           <p class="muted-line">目前 ${pityDraws}/${pityRequired} 抽，第 ${pityRequired} 抽必中。下一抽是第 ${nextDraw} 抽。</p>
         </div>
-        <button id="drawBlindBoxButton" class="primary-button" ${state.account?.isHost ? "disabled" : ""}>
-          ${state.account?.isHost ? "主機毛色專屬" : `抽一次 ${cost} 鑽石`}
-        </button>
+        <button id="drawBlindBoxButton" class="primary-button" ${state.account?.isHost ? "disabled" : ""}>抽獎</button>
       </section>
       <section class="panel">
         <strong>金幣換鑽石</strong>
