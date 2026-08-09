@@ -35,6 +35,7 @@ import {
   addFriend,
   applyChatMessagePermissions,
   applyHostChatColor,
+  autoWeatherChoicesForDayFactor,
   accountWealthScore,
   applyHousePaint,
   areHouseFriends,
@@ -84,7 +85,8 @@ import {
   sendDiamondGift,
   upgradeRocket,
   useRocketPaint,
-  useConsumable
+  useConsumable,
+  worldDayFactorAt
 } from "../src/gameRules.js";
 
 const TEST_CODE_BOOK = {
@@ -442,6 +444,18 @@ test("weather modes are fixed and invalid choices fall back to auto", () => {
   assert.equal(normalizeWeatherMode("rain"), "rain");
   assert.equal(normalizeWeatherMode("thunder"), "thunder");
   assert.equal(normalizeWeatherMode("nope"), "auto");
+});
+
+test("auto weather only includes rainbow by day and aurora by night", () => {
+  const dayChoices = autoWeatherChoicesForDayFactor(1).map(([weather]) => weather);
+  assert.equal(dayChoices.includes("rainbow"), true);
+  assert.equal(dayChoices.includes("aurora"), false);
+
+  const nightChoices = autoWeatherChoicesForDayFactor(0).map(([weather]) => weather);
+  assert.equal(nightChoices.includes("aurora"), true);
+  assert.equal(nightChoices.includes("rainbow"), false);
+
+  assert.ok(worldDayFactorAt(0) >= 0 && worldDayFactorAt(0) <= 1);
 });
 
 test("islands include A to Z plus the host island", () => {

@@ -77,6 +77,7 @@ export const ROOM_BOUNDS = {
 };
 export const SURVIVAL_DRAIN_PER_SECOND = { hunger: 0.18, thirst: 0.24 };
 export const WEATHER_MODES = ["auto", "rain", "thunder", "rainbow", "aurora"];
+export const WEATHER_DAY_CYCLE_SECONDS = 180;
 export const HOST_AVATAR_URL = "/assets/host-avatar.png";
 export const MAX_AVATAR_DATA_URL_LENGTH = 500000;
 export const CHAT_TEXT_COLORS = {
@@ -726,6 +727,29 @@ export function normalizeAvatarDataUrl(value) {
   if (avatar.length > MAX_AVATAR_DATA_URL_LENGTH) return null;
   if (!/^data:image\/(?:png|jpeg|webp);base64,[a-z0-9+/=]+$/i.test(avatar)) return null;
   return avatar;
+}
+
+function smoothStep(edge0, edge1, value) {
+  const t = Math.max(0, Math.min(1, (value - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
+}
+
+export function worldDayFactorAt(seconds) {
+  const phase = (Number(seconds || 0) + WEATHER_DAY_CYCLE_SECONDS * 0.18) % WEATHER_DAY_CYCLE_SECONDS / WEATHER_DAY_CYCLE_SECONDS;
+  const sunrise = smoothStep(0.03, 0.18, phase);
+  const sunset = smoothStep(0.55, 0.72, phase);
+  return Math.max(0, Math.min(1, sunrise * (1 - sunset)));
+}
+
+export function autoWeatherChoicesForDayFactor(dayFactor) {
+  const choices = [
+    ["auto", 7],
+    ["rain", 3],
+    ["thunder", 1.2]
+  ];
+  if (dayFactor >= 0.55) choices.push(["rainbow", 1.1]);
+  if (dayFactor <= 0.25) choices.push(["aurora", 0.9]);
+  return choices;
 }
 
 export function parseChatMessage(rawText) {

@@ -38,6 +38,7 @@ import {
   addFriend,
   applyChatMessagePermissions,
   applyHostChatColor,
+  autoWeatherChoicesForDayFactor,
   applyHousePaint,
   areHouseFriends,
   buyItem,
@@ -85,6 +86,7 @@ import {
   useConsumable,
   upgradeRocket,
   updateSurvivalStats,
+  worldDayFactorAt,
   withAchievementDefaults
 } from "./src/gameRules.js";
 
@@ -2948,7 +2950,7 @@ function handleAdminToggleAttackProtection(socket, session, rawAccountCode, enab
 
 function updateAutoWeather() {
   if (worldWeather !== "auto" || Date.now() < nextAutoWeatherChangeAt) return;
-  const nextWeather = pickAutoWeather();
+  const nextWeather = pickAutoWeather(worldDayFactorAt(Date.now() / 1000));
   if (nextWeather !== autoWeather) {
     autoWeather = nextWeather;
     activeWeatherChangedAt = Date.now() / 1000;
@@ -2956,14 +2958,8 @@ function updateAutoWeather() {
   nextAutoWeatherChangeAt = Date.now() + autoWeatherDurationMs(nextWeather);
 }
 
-function pickAutoWeather() {
-  const choices = [
-    ["auto", 7],
-    ["rain", 3],
-    ["thunder", 1.2],
-    ["rainbow", 1.1],
-    ["aurora", 0.9]
-  ];
+function pickAutoWeather(dayFactor = worldDayFactorAt(Date.now() / 1000)) {
+  const choices = autoWeatherChoicesForDayFactor(dayFactor);
   const total = choices.reduce((sum, [, weight]) => sum + weight, 0);
   let roll = Math.random() * total;
   for (const [weather, weight] of choices) {
