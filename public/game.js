@@ -404,6 +404,8 @@ function handleServerMessage(message) {
   if (message.type === "chat") renderChat(message.chatLog);
   if (message.type === "notice") showNotice(message.message);
   if (message.type === "flightInvite") showFlightInvite(message);
+  if (message.type === "teamInviteRequest") showTeamInviteRequest(message);
+  if (message.type === "challengeInviteRequest") showChallengeInviteRequest(message);
   if (message.type === "ferrisCenterInvite") showFerrisCenterInvite(message);
   if (message.type === "houseVisitRequest") showHouseVisitRequest(message);
   if (message.type === "islandInvite") showIslandInvite(message);
@@ -3968,7 +3970,7 @@ function showFriendsModal() {
       }).join("") || "<p>目前沒有禮物。</p>"}
     </div>
     <h3>組隊</h3>
-    <p>按好友旁邊的組隊後，再按「進入闖關」，在線隊友會一起進去。</p>
+    <p>按好友旁邊的組隊會先發邀請；隊友同意後才會成隊。進入闖關時，也要整隊都同意才會一起進去。</p>
     <button id="leaveTeamButton">離開隊伍</button>
     <div class="list">
       ${(state.account.friends || []).map((friend) => `
@@ -4308,6 +4310,48 @@ function showFlightInvite(message) {
   `;
   item.querySelector("button").addEventListener("click", () => {
     send("acceptFlightInvite", { leaderId: message.leaderId });
+    item.remove();
+  });
+  els.chatLog.append(item);
+  els.chatLog.scrollTop = els.chatLog.scrollHeight;
+}
+
+function showTeamInviteRequest(message) {
+  const item = document.createElement("div");
+  item.className = "invite-message";
+  item.innerHTML = `
+    <span><strong>${escapeHtml(message.fromName || message.fromCode)}</strong> 邀請你組隊。</span>
+    <button type="button" class="primary-button">同意</button>
+    <button type="button">拒絕</button>
+  `;
+  const [acceptButton, rejectButton] = item.querySelectorAll("button");
+  acceptButton.addEventListener("click", () => {
+    send("acceptTeamInvite", { inviteId: message.inviteId });
+    item.remove();
+  });
+  rejectButton.addEventListener("click", () => {
+    send("rejectTeamInvite", { inviteId: message.inviteId });
+    item.remove();
+  });
+  els.chatLog.append(item);
+  els.chatLog.scrollTop = els.chatLog.scrollHeight;
+}
+
+function showChallengeInviteRequest(message) {
+  const item = document.createElement("div");
+  item.className = "invite-message";
+  item.innerHTML = `
+    <span><strong>${escapeHtml(message.leaderName)}</strong> 邀請整隊一起闖關。隊伍：${escapeHtml((message.teamNames || []).join("、"))}</span>
+    <button type="button" class="primary-button">同意</button>
+    <button type="button">拒絕</button>
+  `;
+  const [acceptButton, rejectButton] = item.querySelectorAll("button");
+  acceptButton.addEventListener("click", () => {
+    send("acceptChallengeInvite", { inviteId: message.inviteId });
+    item.remove();
+  });
+  rejectButton.addEventListener("click", () => {
+    send("rejectChallengeInvite", { inviteId: message.inviteId });
     item.remove();
   });
   els.chatLog.append(item);

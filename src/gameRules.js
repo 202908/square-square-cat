@@ -1240,16 +1240,20 @@ export function challengeLevelForAccounts(accounts) {
   return clampChallengeLevel(Math.min(...(levels.length ? levels : [1])));
 }
 
-export function completeChallenge(account, rewardCoins = 500) {
+export function completeChallenge(account, rewardCoins = 500, completedChallengeLevel = null) {
   if (account.isHost) {
     return { ok: true, account: structuredClone(account), coinsAdded: 0, levelAdded: 0, message: "主機完成闖關。" };
   }
   const nextAccount = withAchievementDefaults(account);
   const previousLevel = clampChallengeLevel(nextAccount.level || 1);
-  nextAccount.achievements.challengeCompletions += 1;
+  const finishedLevel = completedChallengeLevel === null ? previousLevel : clampChallengeLevel(completedChallengeLevel);
+  const countsForLevel = finishedLevel >= previousLevel;
+  if (countsForLevel) {
+    nextAccount.achievements.challengeCompletions += 1;
+  }
   nextAccount.coins += rewardCoins;
   const task = levelTaskForLevel(previousLevel);
-  const completed = task ? levelTaskProgress(nextAccount, previousLevel).complete : false;
+  const completed = countsForLevel && task ? levelTaskProgress(nextAccount, previousLevel).complete : false;
   const nextLevel = completed ? Math.min(MAX_PLAYER_LEVEL, previousLevel + 1) : previousLevel;
   nextAccount.level = nextLevel;
   const levelAdded = nextLevel - previousLevel;
@@ -1262,6 +1266,8 @@ export function completeChallenge(account, rewardCoins = 500) {
       ? `闖關成功，獲得 ${rewardCoins} 金幣，升到 Lv. ${nextAccount.level}。`
       : previousLevel >= MAX_PLAYER_LEVEL
         ? `闖關成功，獲得 ${rewardCoins} 金幣，等級已經是 Lv. ${MAX_PLAYER_LEVEL}。`
+        : !countsForLevel
+          ? `闖關成功，獲得 ${rewardCoins} 金幣。這關是 Lv. ${finishedLevel}，不會算進 Lv. ${previousLevel} 的升級進度。`
         : `闖關成功，獲得 ${rewardCoins} 金幣。下一級還需要：${levelTaskProgress(nextAccount, previousLevel).missingText}。`
   };
 }

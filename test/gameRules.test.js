@@ -670,6 +670,21 @@ test("completing a challenge gives coins but waits for the level task", () => {
   assert.equal(levelTaskProgress(result.account).complete, false);
 });
 
+test("higher level teammate does not gain upgrade progress from a lower level challenge", () => {
+  const account = createAccount("level50", {
+    level: 50,
+    coins: 20,
+    achievements: { challengeCompletions: 49 }
+  });
+  const result = completeChallenge(account, 500, 1);
+
+  assert.equal(result.ok, true);
+  assert.equal(result.account.coins, 520);
+  assert.equal(result.account.level, 50);
+  assert.equal(result.account.achievements.challengeCompletions, 49);
+  assert.equal(result.levelAdded, 0);
+});
+
 test("completing a challenge raises level when the extra task is done", () => {
   const account = createAccount("abc", {
     level: 1,

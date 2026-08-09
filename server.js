@@ -136,6 +136,8 @@ const RIVER = { z: 8, width: 8, xMin: -92, xMax: 92 };
 const sessions = new Map();
 const sockets = new Map();
 const teams = new Map();
+const teamInvites = new Map();
+const challengeInvites = new Map();
 const houseVisitRequests = new Map();
 const islandInvites = new Map();
 let accounts = {};
@@ -184,6 +186,8 @@ function handleConnection(socket) {
       FERRIS.platformGuests = FERRIS.platformGuests.filter((guestId) => guestId !== id);
       clearHouseVisitRequestsFor(id);
       clearIslandInvitesFor(id);
+      clearTeamInvitesFor(id);
+      clearChallengeInvitesFor(id);
       if (!closingSession.persistent) {
         cleanupGuestFriendLinks(closingSession.account.code);
       }
@@ -582,11 +586,23 @@ function handleMessage(socket, message) {
     case "teamInvite":
       handleTeamInvite(socket, session, message.friendCode);
       break;
+    case "acceptTeamInvite":
+      handleAcceptTeamInvite(socket, session, message.inviteId);
+      break;
+    case "rejectTeamInvite":
+      handleRejectTeamInvite(socket, session, message.inviteId);
+      break;
     case "leaveTeam":
       handleLeaveTeam(socket, session);
       break;
     case "enterChallenge":
       handleEnterChallenge(socket, session);
+      break;
+    case "acceptChallengeInvite":
+      handleAcceptChallengeInvite(socket, session, message.inviteId);
+      break;
+    case "rejectChallengeInvite":
+      handleRejectChallengeInvite(socket, session, message.inviteId);
       break;
     case "leaveChallenge":
       handleLeaveChallenge(socket, session);
@@ -893,6 +909,13 @@ function onlinePlayersForHost() {
 }
 
 function playerVisibleToSession(viewer, candidate) {
+  if (viewer.player.location === "challenge" || candidate.player.location === "challenge") {
+    if (viewer.id === candidate.id) return true;
+    return viewer.player.location === "challenge"
+      && candidate.player.location === "challenge"
+      && viewer.player.teamId
+      && viewer.player.teamId === candidate.player.teamId;
+  }
   if (viewer.player.location === "rocket" || candidate.player.location === "rocket") {
     return viewer.player.location === candidate.player.location && viewer.player.rocketOwner === candidate.player.rocketOwner;
   }
@@ -2053,12 +2076,70 @@ function handleTeamInvite(socket, session, friendCode) {
     send(socket, "notice", { message: "好友目前不在線上。" });
     return;
   }
-  const teamId = session.player.teamId || friend.player.teamId || makeId();
-  teams.set(teamId, new Set([...(teams.get(teamId) || []), session.id, friend.id]));
-  session.player.teamId = teamId;
-  friend.player.teamId = teamId;
-  send(socket, "notice", { message: `已和 ${code} 組隊。` });
-  send(friend.socket, "notice", { message: `${session.account.code} 和你組隊了。` });
+  if (friend.id === session.id) {
+    send(socket, "notice", { message: "不能邀請自己組隊。" });
+    return;
+  }
+  const inviteId = makeId();
+  teamInvites.set(inviteId, {
+    inviteId,
+    fromId: session.id,
+    targetId: friend.id,
+    createdAt: Date.now()
+  });
+  send(friend.socket, "teamInviteRequest", {
+    inviteId,
+    fromId: session.id,
+    fromCode: session.account.code,
+    fromName: displayNameFor(session.account)
+  });
+  send(socket, "notice", { message: `已邀請 ${code} 組隊，等對方同意。` });
+}
+
+function handleAcceptTeamInvite(socket, session, inviteId) {
+  const invite = teamInvites.get(String(inviteId || ""));
+  if (!invite || invite.targetId !== session.id) {
+    send(socket, "notice", { message: "這個組隊邀請已經失效。" });
+    return;
+  }
+  const inviter = sessions.get(invite.fromId);
+  if (!inviter) {
+    teamInvites.delete(invite.inviteId);
+    send(socket, "notice", { message: "邀請者已經離線。" });
+    return;
+  }
+  const teamId = inviter.player.teamId || session.player.teamId || makeId();
+  const nextMembers = new Set([...(teams.get(teamId) || [])]);
+  if (inviter.player.teamId && teams.has(inviter.player.teamId)) {
+    for (const id of teams.get(inviter.player.teamId)) nextMembers.add(id);
+    teams.delete(inviter.player.teamId);
+  }
+  if (session.player.teamId && teams.has(session.player.teamId)) {
+    for (const id of teams.get(session.player.teamId)) nextMembers.add(id);
+    teams.delete(session.player.teamId);
+  }
+  nextMembers.add(inviter.id);
+  nextMembers.add(session.id);
+  teams.set(teamId, nextMembers);
+  for (const memberId of nextMembers) {
+    const member = sessions.get(memberId);
+    if (member) member.player.teamId = teamId;
+  }
+  teamInvites.delete(invite.inviteId);
+  send(socket, "notice", { message: `已加入 ${displayNameFor(inviter.account)} 的隊伍。` });
+  send(inviter.socket, "notice", { message: `${displayNameFor(session.account)} 同意組隊。` });
+}
+
+function handleRejectTeamInvite(socket, session, inviteId) {
+  const invite = teamInvites.get(String(inviteId || ""));
+  if (!invite || invite.targetId !== session.id) {
+    send(socket, "notice", { message: "這個組隊邀請已經失效。" });
+    return;
+  }
+  const inviter = sessions.get(invite.fromId);
+  teamInvites.delete(invite.inviteId);
+  send(socket, "notice", { message: "已拒絕組隊邀請。" });
+  if (inviter) send(inviter.socket, "notice", { message: `${displayNameFor(session.account)} 拒絕組隊。` });
 }
 
 function handleLeaveTeam(socket, session) {
@@ -2074,6 +2155,33 @@ function handleLeaveTeam(socket, session) {
 
 function handleEnterChallenge(socket, session) {
   const members = getTeamSessions(session);
+  if (members.length > 1) {
+    const requiredIds = members.map((member) => member.id);
+    const inviteId = makeId();
+    challengeInvites.set(inviteId, {
+      inviteId,
+      leaderId: session.id,
+      teamId: session.player.teamId,
+      requiredIds: new Set(requiredIds),
+      acceptedIds: new Set([session.id]),
+      createdAt: Date.now()
+    });
+    for (const member of members) {
+      if (member.id === session.id) continue;
+      send(member.socket, "challengeInviteRequest", {
+        inviteId,
+        leaderId: session.id,
+        leaderName: displayNameFor(session.account),
+        teamNames: members.map((candidate) => displayNameFor(candidate.account))
+      });
+    }
+    send(socket, "notice", { message: `已邀請整隊進入闖關，等 ${members.length - 1} 位隊友同意。` });
+    return;
+  }
+  enterChallengeMembers(members);
+}
+
+function enterChallengeMembers(members) {
   const challengeLevel = challengeLevelForAccounts(members.map((member) => member.account));
   const start = challengeStartForLevel(challengeLevel);
   members.forEach((member, index) => {
@@ -2099,6 +2207,37 @@ function handleEnterChallenge(socket, session) {
     member.player.vz = 0;
     send(member.socket, "notice", { message: `進入 Lv. ${challengeLevel} 上跳闖關。` });
   });
+}
+
+function handleAcceptChallengeInvite(socket, session, inviteId) {
+  const invite = challengeInvites.get(String(inviteId || ""));
+  if (!invite || !invite.requiredIds.has(session.id)) {
+    send(socket, "notice", { message: "這個闖關邀請已經失效。" });
+    return;
+  }
+  invite.acceptedIds.add(session.id);
+  const remaining = [...invite.requiredIds].filter((id) => !invite.acceptedIds.has(id) && sessions.has(id));
+  const leader = sessions.get(invite.leaderId);
+  send(socket, "notice", { message: remaining.length ? `已同意，還有 ${remaining.length} 位隊友未同意。` : "全隊同意，準備進入闖關。" });
+  if (leader && leader.id !== session.id) {
+    send(leader.socket, "notice", { message: `${displayNameFor(session.account)} 同意一起闖關。` });
+  }
+  if (remaining.length) return;
+  const members = [...invite.requiredIds].map((id) => sessions.get(id)).filter(Boolean);
+  challengeInvites.delete(invite.inviteId);
+  enterChallengeMembers(members);
+}
+
+function handleRejectChallengeInvite(socket, session, inviteId) {
+  const invite = challengeInvites.get(String(inviteId || ""));
+  if (!invite || !invite.requiredIds.has(session.id)) {
+    send(socket, "notice", { message: "這個闖關邀請已經失效。" });
+    return;
+  }
+  challengeInvites.delete(invite.inviteId);
+  const leader = sessions.get(invite.leaderId);
+  send(socket, "notice", { message: "已拒絕一起闖關。" });
+  if (leader) send(leader.socket, "notice", { message: `${displayNameFor(session.account)} 拒絕一起闖關，這次闖關取消。` });
 }
 
 function handleLeaveChallenge(socket, session) {
@@ -2128,7 +2267,7 @@ function isAtChallengeFinish(player) {
 function completeChallengeForTeam(session) {
   const members = getTeamSessions(session).filter((member) => member.player.location === "challenge");
   for (const member of members) {
-    const result = completeChallenge(member.account);
+    const result = completeChallenge(member.account, 500, member.player.challengeLevel);
     member.account = result.account;
     persistSessionAccount(member);
     updateTitleAchievements(member);
@@ -2501,6 +2640,22 @@ function clearIslandInvitesFor(sessionId) {
   for (const [inviteId, invite] of islandInvites) {
     if (invite.fromId === sessionId || invite.targetId === sessionId) {
       islandInvites.delete(inviteId);
+    }
+  }
+}
+
+function clearTeamInvitesFor(sessionId) {
+  for (const [inviteId, invite] of teamInvites) {
+    if (invite.fromId === sessionId || invite.targetId === sessionId) {
+      teamInvites.delete(inviteId);
+    }
+  }
+}
+
+function clearChallengeInvitesFor(sessionId) {
+  for (const [inviteId, invite] of challengeInvites) {
+    if (invite.leaderId === sessionId || invite.requiredIds.has(sessionId)) {
+      challengeInvites.delete(inviteId);
     }
   }
 }
