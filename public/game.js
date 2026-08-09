@@ -3206,12 +3206,14 @@ function currentWeather() {
 
 function weatherDayFactor() {
   const weather = currentWeather();
-  if (weather === "rainbow") return 1;
-  if (weather === "aurora") return 0;
+  const baseDayFactor = getDayFactor();
+  const transition = weatherTransitionAmount();
+  if (weather === "rainbow") return baseDayFactor + (1 - baseDayFactor) * transition;
+  if (weather === "aurora") return baseDayFactor * (1 - transition);
   if (weather === "rain" || weather === "thunder") {
-    return getDayFactor() * (1 - weatherTransitionAmount() * 0.68);
+    return baseDayFactor * (1 - transition * 0.68);
   }
-  return getDayFactor();
+  return baseDayFactor;
 }
 
 function weatherTransitionAmount(seconds = 12) {
