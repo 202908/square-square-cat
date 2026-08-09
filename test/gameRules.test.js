@@ -135,6 +135,12 @@ test("chat color suffix hides the suffix and applies a safe color", () => {
   assert.equal(invalid.color, null);
 });
 
+test("chat meaw keyword triggers the paw easter egg", () => {
+  const parsed = parseChatMessage("MEAW");
+  assert.equal(parsed.easterEgg?.id, "meow");
+  assert.equal(parsed.easterEgg?.name, "喵喵足跡");
+});
+
 test("chat decoration suffix hides the suffix and applies a known decoration", () => {
   const parsed = parseChatMessage("hello@(jellyfish)");
   assert.equal(parsed.text, "hello");

@@ -107,7 +107,7 @@ export const CHAT_MESSAGE_DECORATIONS = {
   strawberry: { id: "strawberry", name: "草莓", token: "strawberry", color: "#ff7aa8", icon: "草莓" }
 };
 export const CHAT_EASTER_EGGS = [
-  { id: "meow", name: "喵喵足跡", triggers: ["喵", "meow", "cat"], icon: "🐾" },
+  { id: "meow", name: "喵喵足跡", triggers: ["喵", "meow", "meaw", "cat"], icon: "🐾" },
   { id: "rainbow", name: "彩虹閃閃", triggers: ["彩虹", "rainbow"], icon: "🌈" },
   { id: "moon", name: "月亮小光", triggers: ["月亮", "moon"], icon: "🌙" },
   { id: "star", name: "星星飛出", triggers: ["星星", "star"], icon: "✨" },
