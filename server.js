@@ -49,6 +49,7 @@ import {
   damageMonster,
   drawMonthlyBlindBox,
   equipItem,
+  equipCatVariant,
   exchangeCoinsForDiamonds,
   getChallengePlatforms,
   hostDayGiftState,
@@ -57,6 +58,7 @@ import {
   MONTHLY_CAT_VARIANTS,
   blindBoxStateForAccount,
   normalizeGender,
+  normalizeOwnedCatVariants,
   normalizeIslandCode,
   normalizeWeatherMode,
   pickRandomCatVariant,
@@ -350,6 +352,11 @@ async function loadData() {
         account.catVariant = account.isHost ? "host" : createAccount(account.code).catVariant;
         changedAccounts = true;
       }
+      const ownedCatVariants = normalizeOwnedCatVariants(account.ownedCatVariants, account.catVariant);
+      if (JSON.stringify(account.ownedCatVariants || []) !== JSON.stringify(ownedCatVariants)) {
+        account.ownedCatVariants = ownedCatVariants;
+        changedAccounts = true;
+      }
       if (account.isHost && account.catVariant !== "host") {
         account.catVariant = "host";
         changedAccounts = true;
@@ -472,6 +479,9 @@ function handleMessage(socket, message) {
       break;
     case "equip":
       updateAccount(socket, session, equipItem(session.account, message.itemId));
+      break;
+    case "equipCatVariant":
+      updateAccount(socket, session, equipCatVariant(session.account, message.variantId));
       break;
     case "equipTitle":
       handleEquipTitle(socket, session, message.titleId);

@@ -3322,11 +3322,39 @@ const MONTHLY_DRAW_STYLES = [
   ["星光王冠鐘", "轉動年末特級星光時鐘"]
 ];
 
+const CAT_VARIANT_LABELS = {
+  black: "黑貓",
+  white: "白貓",
+  calico: "三花貓",
+  orange: "橘貓",
+  blue: "稀有藍貓",
+  moonPinkEar: "月亮粉耳貓",
+  storm: "暴風貓",
+  lavender: "薰衣草貓",
+  mint: "薄荷貓",
+  gold: "金色貓",
+  chocolate: "巧克力貓",
+  janSnow: "一月雪光貓",
+  febHeart: "二月愛心貓",
+  marSakura: "三月櫻花貓",
+  aprRain: "四月雨滴貓",
+  mayEmerald: "五月翡翠貓",
+  junOcean: "六月海洋貓",
+  julSunset: "七月夕陽貓",
+  augNebula: "八月星雲貓",
+  sepMooncake: "九月月餅貓",
+  octPumpkin: "十月南瓜貓",
+  novAurora: "十一月極光貓",
+  decStarlight: "十二月星光王冠貓",
+  host: "月之貓"
+};
+
 function showBlindBoxModal() {
   const blindBox = state.blindBox || {};
   const current = blindBox.current || { month: new Date().getMonth() + 1, id: "janSnow", name: "一月雪光貓" };
   const drawStyle = MONTHLY_DRAW_STYLES[current.month - 1] || MONTHLY_DRAW_STYLES[0];
   const variants = blindBox.monthlyVariants || [];
+  const ownedSkins = new Set(state.account?.ownedCatVariants || []);
   const cost = Number(blindBox.nextCost || 10);
   const nextDraw = Number(blindBox.nextDrawNumber || 1);
   const pityRequired = Number(blindBox.pityDrawsRequired || 10);
@@ -3364,11 +3392,12 @@ function showBlindBoxModal() {
           ${variants.map((variant) => {
             const style = MONTHLY_DRAW_STYLES[variant.month - 1] || MONTHLY_DRAW_STYLES[0];
             const active = variant.id === current.id;
+            const owned = ownedSkins.has(variant.id);
             return `
-              <div class="monthly-skin-card ${active ? "active" : ""}">
+              <div class="monthly-skin-card ${active ? "active" : ""} ${owned ? "owned" : ""}">
                 <span>${variant.month} 月</span>
                 <strong>${escapeHtml(variant.name)}</strong>
-                <small>${escapeHtml(style[0])}${variant.tier === "special" ? " · 特級" : ""}</small>
+                <small>${owned ? "已抽到 · " : ""}${escapeHtml(style[0])}${variant.tier === "special" ? " · 特級" : ""}</small>
               </div>
             `;
           }).join("")}
@@ -3546,6 +3575,19 @@ function showBagModal() {
   const equippedItems = owned.filter((item) => item.slot && state.account.equipped[item.slot] === item.id);
   const unequippedItems = owned.filter((item) => !(item.slot && state.account.equipped[item.slot] === item.id));
   const ownedTitles = (state.account.titles || []).map((id) => state.titleCatalog[id]).filter(Boolean);
+  const ownedSkins = [...new Set(state.account.ownedCatVariants || [state.account.catVariant].filter(Boolean))];
+  const skinHtml = `
+    <h3>毛色</h3>
+    <div class="list">${ownedSkins.map((variant) => `
+      <div class="list-item">
+        <div class="split">
+          <strong>${escapeHtml(CAT_VARIANT_LABELS[variant] || variant)}</strong>
+          <span>${state.account.catVariant === variant ? "穿著中" : "已收藏"}</span>
+        </div>
+        <button data-equip-cat-variant="${escapeHtml(variant)}">${state.account.catVariant === variant ? "穿著中" : "換上"}</button>
+      </div>
+    `).join("")}</div>
+  `;
   const equippedHtml = `<h3>已裝備</h3>${equippedItems.length ? `<div class="list">${equippedItems.map((item) => bagItemHtml(item)).join("")}</div>` : "<p>目前沒有裝備商品。</p>"}`;
   const itemHtml = `<h3>尚未裝備</h3>${unequippedItems.length ? `<div class="list">${unequippedItems.map((item) => bagItemHtml(item)).join("")}</div>` : "<p>背包現在沒有尚未裝備的商品道具。</p>"}`;
   const titleHtml = `
@@ -3560,7 +3602,7 @@ function showBagModal() {
       </div>
     `).join("")}</div>
   `;
-  openModal("背包", `${titleHtml}${equippedHtml}${itemHtml}`);
+  openModal("背包", `${titleHtml}${skinHtml}${equippedHtml}${itemHtml}`);
   document.querySelectorAll("[data-equip]").forEach((button) => {
     button.addEventListener("click", () => send("equip", { itemId: button.dataset.equip }));
   });
@@ -3569,6 +3611,9 @@ function showBagModal() {
   });
   document.querySelectorAll("[data-equip-title]").forEach((button) => {
     button.addEventListener("click", () => send("equipTitle", { titleId: button.dataset.equipTitle }));
+  });
+  document.querySelectorAll("[data-equip-cat-variant]").forEach((button) => {
+    button.addEventListener("click", () => send("equipCatVariant", { variantId: button.dataset.equipCatVariant }));
   });
   document.querySelectorAll("[data-place-house]").forEach((button) => {
     button.addEventListener("click", () => send("placeHouse"));

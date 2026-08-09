@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   BLIND_BOX_BASE_DIAMOND_COST,
   BLIND_BOX_PITY_DRAWS,
+  BLIND_BOX_SKIN_COIN_VALUE,
   CAT_VARIANTS,
   CAT_VARIANT_RARITIES,
   COIN_TO_DIAMOND_RATE,
@@ -44,6 +45,7 @@ import {
   damageAdultThirst,
   drawMonthlyBlindBox,
   equipItem,
+  equipCatVariant,
   exchangeCoinsForDiamonds,
   getChallengePlatforms,
   claimHostDayGift,
@@ -77,6 +79,11 @@ const TEST_CODE_BOOK = {
   "test-coins": { coins: 100, type: "coins", active: true },
   "test-item": { item: "wings", type: "item", active: true }
 };
+
+function sequenceRandom(values) {
+  let index = 0;
+  return () => values[Math.min(index++, values.length - 1)];
+}
 
 test("new player account codes accept 1 to 10 letters or numbers", () => {
   assert.equal(isValidNewAccountCode("a"), true);
@@ -160,9 +167,11 @@ test("coins can convert to diamonds but not back to coins", () => {
 test("monthly blind box uses chance and guarantees the tenth draw", () => {
   const date = new Date("2026-08-09T00:00:00Z");
   const firstAccount = createAccount("box", { diamonds: 200, catVariant: "black" });
-  const miss = drawMonthlyBlindBox(firstAccount, date, () => 0.99);
+  const miss = drawMonthlyBlindBox(firstAccount, date, sequenceRandom([0.99, 0]));
   assert.equal(miss.ok, true);
   assert.equal(miss.won, false);
+  assert.equal(miss.reward.kind, "coins");
+  assert.equal(miss.account.coins, 60);
   assert.equal(miss.account.catVariant, "black");
   assert.equal(miss.account.diamonds, 190);
   assert.equal(blindBoxStateForAccount(miss.account, date).nextCost, 15);
@@ -177,12 +186,75 @@ test("monthly blind box uses chance and guarantees the tenth draw", () => {
   assert.equal(result.won, true);
   assert.equal(result.variant.id, "augNebula");
   assert.equal(result.account.catVariant, "augNebula");
+  assert.equal(result.account.ownedCatVariants.includes("augNebula"), true);
   assert.equal(result.account.blindBoxPity.draws, 0);
 
   const host = createAccount("host", { isHost: true, diamonds: 999999999, catVariant: "host" });
   const hostResult = drawMonthlyBlindBox(host, date);
   assert.equal(hostResult.ok, false);
   assert.equal(hostResult.message.includes("主機貓"), true);
+});
+
+test("monthly blind box consolation prizes give items and refund duplicate equipment", () => {
+  const date = new Date("2026-08-09T00:00:00Z");
+  const newItemAccount = createAccount("new-item", { diamonds: 200, catVariant: "black" });
+  const newItem = drawMonthlyBlindBox(newItemAccount, date, sequenceRandom([0.99, 0.51]));
+  assert.equal(newItem.ok, true);
+  assert.equal(newItem.won, false);
+  assert.equal(newItem.reward.kind, "item");
+  assert.equal(newItem.reward.itemId, "star-hat");
+  assert.equal(newItem.account.inventory.includes("star-hat"), true);
+  assert.equal(newItem.message.includes("恭喜獲得"), true);
+
+  const duplicateAccount = createAccount("dup-item", {
+    diamonds: 200,
+    coins: 4,
+    catVariant: "black",
+    inventory: ["star-hat"]
+  });
+  const duplicate = drawMonthlyBlindBox(duplicateAccount, date, sequenceRandom([0.99, 0.51]));
+  assert.equal(duplicate.ok, true);
+  assert.equal(duplicate.won, false);
+  assert.equal(duplicate.reward.kind, "duplicateItem");
+  assert.equal(duplicate.reward.coins, 80);
+  assert.equal(duplicate.account.inventory.filter((itemId) => itemId === "star-hat").length, 1);
+  assert.equal(duplicate.account.coins, 84);
+});
+
+test("monthly blind box refunds a skin that was already drawn before", () => {
+  const date = new Date("2026-08-09T00:00:00Z");
+  const account = createAccount("dup-skin", {
+    diamonds: 1000,
+    catVariant: "black",
+    ownedCatVariants: ["black", "augNebula"],
+    blindBoxPity: { month: 8, draws: 9 }
+  });
+  const duplicate = drawMonthlyBlindBox(account, date, () => 0.99);
+  assert.equal(duplicate.ok, true);
+  assert.equal(duplicate.won, true);
+  assert.equal(duplicate.reward.kind, "duplicateSkin");
+  assert.equal(duplicate.reward.coins, Math.floor(BLIND_BOX_SKIN_COIN_VALUE * 2 / 3));
+  assert.equal(duplicate.account.catVariant, "black");
+});
+
+test("drawn cat skins stay owned and can be equipped again from the bag", () => {
+  const date = new Date("2026-08-09T00:00:00Z");
+  const account = createAccount("skin-bag", {
+    diamonds: 1000,
+    catVariant: "black",
+    ownedCatVariants: ["black"],
+    blindBoxPity: { month: 8, draws: 9 }
+  });
+  const won = drawMonthlyBlindBox(account, date, () => 0.99);
+  assert.equal(won.account.catVariant, "augNebula");
+  assert.deepEqual(won.account.ownedCatVariants.sort(), ["augNebula", "black"].sort());
+
+  const backToBlack = equipCatVariant(won.account, "black");
+  assert.equal(backToBlack.ok, true);
+  assert.equal(backToBlack.account.catVariant, "black");
+  const backToNebula = equipCatVariant(backToBlack.account, "augNebula");
+  assert.equal(backToNebula.ok, true);
+  assert.equal(backToNebula.account.catVariant, "augNebula");
 });
 
 test("host day gift can be claimed once per year on December 27", () => {

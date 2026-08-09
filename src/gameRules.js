@@ -28,6 +28,7 @@ export const GENDER_OPTIONS = ["male", "female", "private"];
 export const BLIND_BOX_BASE_DIAMOND_COST = 10;
 export const BLIND_BOX_PITY_DRAWS = 10;
 export const BLIND_BOX_WIN_CHANCE = 0.16;
+export const BLIND_BOX_SKIN_COIN_VALUE = 1200;
 export const COIN_TO_DIAMOND_RATE = 10;
 export const HOST_DAY_GIFT = {
   id: "host-day-12-27",
@@ -50,6 +51,18 @@ export const MONTHLY_CAT_VARIANTS = [
   { month: 10, id: "octPumpkin", name: "十月南瓜貓" },
   { month: 11, id: "novAurora", name: "十一月極光貓" },
   { month: 12, id: "decStarlight", name: "十二月星光王冠貓", tier: "special" }
+];
+export const BLIND_BOX_CONSOLATION_REWARDS = [
+  { kind: "coins", coins: 60 },
+  { kind: "coins", coins: 100 },
+  { kind: "coins", coins: 160 },
+  { kind: "diamonds", diamonds: 3 },
+  { kind: "diamonds", diamonds: 5 },
+  { kind: "item", itemId: "star-hat" },
+  { kind: "item", itemId: "nebula-scarf" },
+  { kind: "item", itemId: "comet-tail" },
+  { kind: "item", itemId: "cloud-trail" },
+  { kind: "item", itemId: "rainbow-trail" }
 ];
 export const MAX_PLAYER_LEVEL = 100;
 export const MAX_CHALLENGE_STEP_Y = 2.8;
@@ -669,13 +682,15 @@ export function createAccount(code, overrides = {}) {
   const accountCode = normalizeAccountCode(code);
   const isHost = Boolean(HOST_CODE && accountCode === HOST_CODE);
   const gender = isHost ? "private" : normalizeGender(overrides.gender);
+  const catVariant = overrides.catVariant || (isHost ? "host" : pickRandomCatVariant());
   return {
     code: accountCode,
     level: isHost ? null : 1,
     coins: isHost ? 999999999 : 0,
     diamonds: isHost ? 999999999 : 0,
     isHost,
-    catVariant: isHost ? "host" : pickRandomCatVariant(),
+    catVariant,
+    ownedCatVariants: normalizeOwnedCatVariants(overrides.ownedCatVariants, catVariant),
     inventory: isHost ? [...HOST_DEFAULT_INVENTORY] : [],
     equipped: {
       hat: null,
@@ -706,8 +721,19 @@ export function createAccount(code, overrides = {}) {
     prefers2D: false,
     createdAt: new Date().toISOString(),
     ...overrides,
+    catVariant,
+    ownedCatVariants: normalizeOwnedCatVariants(overrides.ownedCatVariants, catVariant),
     gender
   };
+}
+
+export function normalizeOwnedCatVariants(rawVariants, fallbackVariant = null) {
+  const variants = Array.isArray(rawVariants) ? rawVariants : [];
+  const normalized = variants.filter((variant) => CAT_VARIANTS.includes(variant) || variant === "host");
+  if (fallbackVariant && (CAT_VARIANTS.includes(fallbackVariant) || fallbackVariant === "host")) {
+    normalized.push(fallbackVariant);
+  }
+  return [...new Set(normalized)];
 }
 
 export function pickRandomCatVariant(excludedVariant = null) {
@@ -843,35 +869,82 @@ export function drawMonthlyBlindBox(account, date = new Date(), random = Math.ra
   }
   const state = blindBoxStateForAccount(account, date);
   const monthly = state.current;
-  if (account.catVariant === monthly.id) {
-    return { ok: false, message: `你已經是本月限定 ${monthly.name} 了。` };
-  }
   if (Number(account.diamonds || 0) < state.nextCost) {
     return { ok: false, message: `鑽石不夠，這次抽需要 ${state.nextCost} 顆鑽石。` };
   }
   const nextAccount = structuredClone(account);
+  nextAccount.ownedCatVariants = normalizeOwnedCatVariants(nextAccount.ownedCatVariants, nextAccount.catVariant);
   nextAccount.diamonds -= state.nextCost;
   const win = state.nextDrawNumber >= BLIND_BOX_PITY_DRAWS || random() < BLIND_BOX_WIN_CHANCE;
   nextAccount.blindBoxPity = win
     ? { month: monthly.month, draws: 0 }
     : { month: monthly.month, draws: state.nextDrawNumber };
   if (!win) {
+    const reward = applyBlindBoxConsolationReward(nextAccount, random);
     return {
       ok: true,
       account: nextAccount,
       variant: monthly,
+      reward,
       won: false,
-      message: `這次沒有抽到 ${monthly.name}，目前 ${state.nextDrawNumber}/${BLIND_BOX_PITY_DRAWS} 抽，第 10 抽必中。`
+      message: blindBoxConsolationMessage(reward, state.nextDrawNumber)
     };
   }
+  if (nextAccount.ownedCatVariants.includes(monthly.id)) {
+    const coins = Math.floor(BLIND_BOX_SKIN_COIN_VALUE * 2 / 3);
+    nextAccount.coins = Number(nextAccount.coins || 0) + coins;
+    return {
+      ok: true,
+      account: nextAccount,
+      variant: monthly,
+      reward: { kind: "duplicateSkin", variant: monthly, coins },
+      won: true,
+      message: `抽到重複的 ${monthly.name} 皮膚，自動換成 ${coins} 金幣。`
+    };
+  }
+  nextAccount.ownedCatVariants.push(monthly.id);
   nextAccount.catVariant = monthly.id;
   return {
     ok: true,
     account: nextAccount,
     variant: monthly,
+    reward: { kind: "skin", variant: monthly },
     won: true,
-    message: `抽到本月限定 ${monthly.name}，毛色已永久保存。`
+    message: `恭喜獲得 ${monthly.name} 皮膚，毛色已永久保存。`
   };
+}
+
+export function applyBlindBoxConsolationReward(account, random = Math.random) {
+  const reward = BLIND_BOX_CONSOLATION_REWARDS[Math.min(
+    BLIND_BOX_CONSOLATION_REWARDS.length - 1,
+    Math.floor(random() * BLIND_BOX_CONSOLATION_REWARDS.length)
+  )];
+  if (reward.kind === "coins") {
+    account.coins = Number(account.coins || 0) + reward.coins;
+    return { ...reward };
+  }
+  if (reward.kind === "diamonds") {
+    account.diamonds = Number(account.diamonds || 0) + reward.diamonds;
+    return { ...reward };
+  }
+  const item = SHOP_ITEMS.find((candidate) => candidate.id === reward.itemId);
+  if (!item) return { kind: "coins", coins: 60 };
+  if (Array.isArray(account.inventory) && account.inventory.includes(item.id) && item.type !== "consumable") {
+    const coins = Math.floor(Number(item.price || 0) * 2 / 3);
+    account.coins = Number(account.coins || 0) + coins;
+    return { kind: "duplicateItem", itemId: item.id, itemName: item.name, coins };
+  }
+  account.inventory = Array.isArray(account.inventory) ? account.inventory : [];
+  account.inventory.push(item.id);
+  return { kind: "item", itemId: item.id, itemName: item.name };
+}
+
+export function blindBoxConsolationMessage(reward, drawNumber) {
+  const pityText = `目前 ${drawNumber}/${BLIND_BOX_PITY_DRAWS} 抽，第 10 抽必中。`;
+  if (reward.kind === "coins") return `恭喜獲得 ${reward.coins} 金幣。${pityText}`;
+  if (reward.kind === "diamonds") return `恭喜獲得 ${reward.diamonds} 顆鑽石。${pityText}`;
+  if (reward.kind === "duplicateItem") return `抽到重複的 ${reward.itemName}，自動換成 ${reward.coins} 金幣。${pityText}`;
+  return `恭喜獲得 ${reward.itemName}。${pityText}`;
 }
 
 export function hostDayGiftState(account, date = new Date()) {
@@ -953,6 +1026,24 @@ export function equipItem(account, itemId) {
   const nextAccount = structuredClone(account);
   nextAccount.equipped[item.slot] = nextAccount.equipped[item.slot] === itemId ? null : itemId;
   return { ok: true, account: nextAccount, message: "背包已更新。" };
+}
+
+export function equipCatVariant(account, variantId) {
+  const variant = String(variantId || "");
+  if (!CAT_VARIANTS.includes(variant) && variant !== "host") {
+    return { ok: false, message: "找不到這個毛色。" };
+  }
+  const owned = normalizeOwnedCatVariants(account.ownedCatVariants, account.catVariant);
+  if (!owned.includes(variant)) {
+    return { ok: false, message: "你還沒有這個毛色。" };
+  }
+  if (account.isHost && variant !== "host") {
+    return { ok: false, message: "主機外觀不用更換毛色。" };
+  }
+  const nextAccount = structuredClone(account);
+  nextAccount.ownedCatVariants = owned;
+  nextAccount.catVariant = variant;
+  return { ok: true, account: nextAccount, message: "毛色已更換。" };
 }
 
 export function applyHousePaint(account, itemId) {
