@@ -151,11 +151,26 @@ test("chat suffix can combine one color and one decoration", () => {
   assert.equal(parsed.color, "pink");
   assert.equal(parsed.colorValue, "#ff8fcb");
   assert.equal(parsed.decoration.id, "strawberry");
+  assert.deepEqual(parsed.decorations.map((decoration) => decoration.id), ["strawberry"]);
 
   const reversed = parseChatMessage("hello@(strawberry)(blue)");
   assert.equal(reversed.text, "hello");
   assert.equal(reversed.color, "blue");
   assert.equal(reversed.decoration.id, "strawberry");
+});
+
+test("chat suffix can stack up to five effects in written order", () => {
+  const parsed = parseChatMessage("hello@(pink)(friend)(planet)(strawberry)");
+  assert.equal(parsed.text, "hello");
+  assert.equal(parsed.color, "pink");
+  assert.equal(parsed.visibility, "friends");
+  assert.deepEqual(parsed.decorations.map((decoration) => decoration.id), ["planet", "strawberry"]);
+});
+
+test("chat suffix rejects more than five effects", () => {
+  const parsed = parseChatMessage("hello@(pink)(friend)(planet)(strawberry)(candy)(coin)");
+  assert.equal(parsed.error?.code, "TOO_MANY_CHAT_EFFECTS");
+  assert.equal(parsed.error?.message, "你只能用五個特效。");
 });
 
 test("chat friend suffix hides the suffix and marks friend-only visibility", () => {
@@ -179,6 +194,7 @@ test("host chat cycles blue white pink unless a color suffix overrides it", () =
   const first = applyHostChatColor(parseChatMessage("嗨"), host, 0);
   assert.equal(first.message.color, "blue");
   assert.equal(first.message.decoration.id, "strawberry");
+  assert.deepEqual(first.message.decorations.map((decoration) => decoration.id), ["strawberry"]);
   assert.equal(first.nextIndex, 1);
 
   const override = applyHostChatColor(parseChatMessage("嗨@(pink)"), host, first.nextIndex);
@@ -189,6 +205,10 @@ test("host chat cycles blue white pink unless a color suffix overrides it", () =
   assert.equal(decorated.message.color, "candy");
   assert.equal(decorated.message.decoration.id, "candy");
   assert.equal(decorated.nextIndex, 1);
+
+  const tooMany = applyHostChatColor(parseChatMessage("嗨@(pink)(friend)(planet)(strawberry)(candy)(coin)"), host, decorated.nextIndex);
+  assert.equal(tooMany.message.error.code, "TOO_MANY_CHAT_EFFECTS");
+  assert.equal(tooMany.nextIndex, 1);
 
   const second = applyHostChatColor(parseChatMessage("嗨"), host, decorated.nextIndex);
   assert.equal(second.message.color, "white");

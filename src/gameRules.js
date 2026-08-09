@@ -93,6 +93,7 @@ export const CHAT_TEXT_COLORS = {
   mint: "#8fffd2"
 };
 export const HOST_CHAT_COLOR_CYCLE = ["blue", "white", "pink"];
+export const MAX_CHAT_EFFECTS = 5;
 export const CHAT_MESSAGE_VISIBILITIES = {
   friends: { id: "friends", token: "friend", name: "只給好友看" }
 };
@@ -729,13 +730,26 @@ export function normalizeAvatarDataUrl(value) {
 
 export function parseChatMessage(rawText) {
   const raw = String(rawText || "").slice(0, 180);
-  const suffixMatch = raw.match(/@\(([a-z]+)\)(?:\(([a-z]+)\))?\s*$/);
-  const suffixes = suffixMatch ? [suffixMatch[1], suffixMatch[2]].filter(Boolean) : [];
+  const suffixMatch = raw.match(/@((?:\([a-z]+\))+)\s*$/);
+  const suffixes = suffixMatch ? [...suffixMatch[1].matchAll(/\(([a-z]+)\)/g)].map((match) => match[1]) : [];
+  if (suffixes.length > MAX_CHAT_EFFECTS) {
+    return {
+      text: raw.trim().slice(0, 160),
+      color: null,
+      colorValue: null,
+      visibility: null,
+      decoration: null,
+      decorations: [],
+      easterEgg: null,
+      error: { code: "TOO_MANY_CHAT_EFFECTS", title: "Error", message: "你只能用五個特效。" }
+    };
+  }
   const color = suffixes.find((suffix) => CHAT_TEXT_COLORS[suffix]) || null;
-  const decorationKey = suffixes.find((suffix) => CHAT_MESSAGE_DECORATIONS[suffix]) || null;
+  const decorationKeys = suffixes.filter((suffix) => CHAT_MESSAGE_DECORATIONS[suffix]);
   const visibility = suffixes.includes(CHAT_MESSAGE_VISIBILITIES.friends.token) ? CHAT_MESSAGE_VISIBILITIES.friends.id : null;
-  const decoration = decorationKey ? CHAT_MESSAGE_DECORATIONS[decorationKey] : null;
-  const shouldHideSuffix = Boolean(color || decoration || visibility);
+  const decorations = decorationKeys.map((key) => CHAT_MESSAGE_DECORATIONS[key]);
+  const decoration = decorations[0] || null;
+  const shouldHideSuffix = Boolean(color || decorations.length || visibility);
   const text = (shouldHideSuffix ? raw.slice(0, suffixMatch.index) : raw).trim().slice(0, 160);
   const lowered = text.toLowerCase();
   const easterEgg = CHAT_EASTER_EGGS.find((egg) =>
@@ -749,6 +763,7 @@ export function parseChatMessage(rawText) {
     decoration: decoration
       ? { id: decoration.id, name: decoration.name, token: decoration.token, color: decoration.color, icon: decoration.icon }
       : null,
+    decorations: decorations.map((item) => ({ id: item.id, name: item.name, token: item.token, color: item.color, icon: item.icon })),
     easterEgg: easterEgg ? { id: easterEgg.id, name: easterEgg.name, icon: easterEgg.icon } : null
   };
 }
@@ -756,17 +771,22 @@ export function parseChatMessage(rawText) {
 export function applyHostChatColor(parsedMessage, account, currentIndex = 0) {
   const parsed = parsedMessage || {};
   const index = Math.max(0, Number(currentIndex || 0));
+  if (parsed.error) {
+    return { message: parsed, nextIndex: index };
+  }
   if (!account?.isHost || parsed.color || parsed.decoration) {
     return { message: parsed, nextIndex: index };
   }
   const color = HOST_CHAT_COLOR_CYCLE[index % HOST_CHAT_COLOR_CYCLE.length];
   const decoration = CHAT_MESSAGE_DECORATIONS.strawberry;
+  const decorationPayload = { id: decoration.id, name: decoration.name, token: decoration.token, color: decoration.color, icon: decoration.icon };
   return {
     message: {
       ...parsed,
       color,
       colorValue: CHAT_TEXT_COLORS[color],
-      decoration: { id: decoration.id, name: decoration.name, token: decoration.token, color: decoration.color, icon: decoration.icon }
+      decoration: decorationPayload,
+      decorations: [decorationPayload]
     },
     nextIndex: index + 1
   };

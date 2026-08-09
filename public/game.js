@@ -405,6 +405,7 @@ function handleServerMessage(message) {
   if (message.type === "account") updateAccount(message);
   if (message.type === "state") updateWorldState(message);
   if (message.type === "chat") renderChat(message.chatLog);
+  if (message.type === "chatError") showChatError(message);
   if (message.type === "notice") showNotice(message.message);
   if (message.type === "flightInvite") showFlightInvite(message);
   if (message.type === "teamInviteRequest") showTeamInviteRequest(message);
@@ -4223,7 +4224,7 @@ function showAdminModal() {
     </section>
     <section class="list">
       <strong>聊天彩蛋</strong>
-      <p class="muted-line">顏色或裝飾語法放在訊息最後，例如 hello@(pink)(strawberry)，送出後只會顯示 hello。</p>
+      <p class="muted-line">顏色、好友限定、裝飾語法放在訊息最後，例如 hello@(pink)(friend)(planet)(strawberry)，最多五個。</p>
       <div>${chatColorRows}</div>
       <div>${chatDecorationRows}</div>
       ${chatEggRows}
@@ -4337,27 +4338,35 @@ function closeModal() {
 }
 
 function renderChat(chatLog) {
+  const decorationsFor = (message) => chatDecorationsFor(message);
   const messageClasses = (message) => [
     message.easterEgg ? "chat-easter-egg" : "",
-    message.decoration ? "chat-decorated" : "",
-    message.decoration ? `chat-decoration-${cssToken(message.decoration.id)}` : ""
+    decorationsFor(message).length ? "chat-decorated" : ""
   ].filter(Boolean).join(" ");
   els.chatLog.innerHTML = chatLog.map((message) => `
     <div class="${messageClasses(message)}">
       <strong>${escapeHtml(message.sender)}:</strong>
-      ${chatDecorationHtml(message, "left")}
+      ${chatDecorationHtml(message, "left", decorationsFor(message))}
       <span class="chat-message-text" style="${chatMessageStyle(message)}">${escapeHtml(message.text)}</span>
-      ${chatDecorationHtml(message, "right")}
+      ${chatDecorationHtml(message, "right", decorationsFor(message))}
       ${message.easterEgg ? `<span class="chat-easter-icon" title="${escapeHtml(message.easterEgg.name)}">${escapeHtml(message.easterEgg.icon || "✨")}</span>` : ""}
     </div>
   `).join("");
   els.chatLog.scrollTop = els.chatLog.scrollHeight;
 }
 
-function chatDecorationHtml(message, side) {
-  if (!message.decoration?.id) return "";
-  const name = escapeHtml(message.decoration.name || message.decoration.id);
-  return `<span class="chat-decoration-mark chat-decoration-${side}" aria-label="${name}"></span>`;
+function chatDecorationsFor(message) {
+  const decorations = Array.isArray(message.decorations) ? message.decorations : [];
+  if (decorations.length) return decorations.filter((decoration) => decoration?.id);
+  return message.decoration?.id ? [message.decoration] : [];
+}
+
+function chatDecorationHtml(message, side, decorations) {
+  const items = side === "left" ? [...decorations].reverse() : decorations;
+  return items.map((decoration) => {
+    const name = escapeHtml(decoration.name || decoration.id);
+    return `<span class="chat-decoration-mark chat-decoration-${side} chat-decoration-${cssToken(decoration.id)}" aria-label="${name}"></span>`;
+  }).join("");
 }
 
 function chatMessageStyle(message) {
@@ -4374,6 +4383,14 @@ function showNotice(text) {
   if (!text) return;
   const item = document.createElement("div");
   item.innerHTML = `<strong>系統:</strong> ${escapeHtml(text)}`;
+  els.chatLog.append(item);
+  els.chatLog.scrollTop = els.chatLog.scrollHeight;
+}
+
+function showChatError(message) {
+  const item = document.createElement("div");
+  item.className = "chat-error";
+  item.innerHTML = `<strong>${escapeHtml(message.title || "Error")}</strong><span>${escapeHtml(message.message || "聊天特效不能這樣使用。")}</span>`;
   els.chatLog.append(item);
   els.chatLog.scrollTop = els.chatLog.scrollHeight;
 }

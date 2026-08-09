@@ -358,18 +358,18 @@ select {
   transform: scaleX(-1);
 }
 
-.chat-decoration-jellyfish .chat-decoration-mark::before { content: "༄"; color: #74d8ff; }
-.chat-decoration-candy .chat-decoration-mark::before { content: "◆"; color: #ff8fcb; }
-.chat-decoration-coin .chat-decoration-mark::before { content: "●"; color: #f7c948; }
-.chat-decoration-snake .chat-decoration-mark::before { content: "〰"; color: #67d88a; }
-.chat-decoration-planet .chat-decoration-mark::before { content: "◉"; color: #b78cff; }
-.chat-decoration-bow .chat-decoration-mark::before { content: "⋈"; color: #ff9bd7; }
+.chat-decoration-mark.chat-decoration-jellyfish::before { content: "༄"; color: #74d8ff; }
+.chat-decoration-mark.chat-decoration-candy::before { content: "◆"; color: #ff8fcb; }
+.chat-decoration-mark.chat-decoration-coin::before { content: "●"; color: #f7c948; }
+.chat-decoration-mark.chat-decoration-snake::before { content: "〰"; color: #67d88a; }
+.chat-decoration-mark.chat-decoration-planet::before { content: "◉"; color: #b78cff; }
+.chat-decoration-mark.chat-decoration-bow::before { content: "⋈"; color: #ff9bd7; }
 
-.chat-decoration-strawberry .chat-decoration-mark {
+.chat-decoration-mark.chat-decoration-strawberry {
   position: relative;
 }
 
-.chat-decoration-strawberry .chat-decoration-mark::before {
+.chat-decoration-mark.chat-decoration-strawberry::before {
   content: "";
   width: 16px;
   height: 18px;
@@ -383,7 +383,7 @@ select {
   border: 1px solid rgba(255, 255, 255, 0.8);
 }
 
-.chat-decoration-strawberry .chat-decoration-mark::after {
+.chat-decoration-mark.chat-decoration-strawberry::after {
   content: "";
   position: absolute;
   top: 0;
@@ -392,6 +392,21 @@ select {
   height: 7px;
   background: linear-gradient(135deg, #77d989, #3fbf67);
   clip-path: polygon(50% 0, 64% 42%, 100% 25%, 73% 63%, 88% 100%, 50% 72%, 12% 100%, 27% 63%, 0 25%, 36% 42%);
+}
+
+.chat-error {
+  display: grid;
+  gap: 2px;
+  margin: 4px 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 90, 108, 0.5);
+  border-radius: 8px;
+  background: rgba(255, 90, 108, 0.14);
+  color: #ffe3e8;
+}
+
+.chat-error strong {
+  color: #ff8f9d;
 }
 
 .chat-easter-icon {

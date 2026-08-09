@@ -3029,6 +3029,10 @@ function addChat(session, rawText) {
   const hostColored = applyHostChatColor(parseChatMessage(rawText), session.account, session.player.hostChatColorIndex);
   session.player.hostChatColorIndex = hostColored.nextIndex;
   const parsed = hostColored.message;
+  if (parsed.error) {
+    send(session.socket, "chatError", parsed.error);
+    return;
+  }
   const text = parsed.text.slice(0, 120);
   if (!text) return;
   incrementAchievement(session, "chatMessages");
@@ -3039,6 +3043,7 @@ function addChat(session, rawText) {
     colorValue: parsed.colorValue,
     visibility: parsed.visibility,
     decoration: parsed.decoration,
+    decorations: parsed.decorations || (parsed.decoration ? [parsed.decoration] : []),
     easterEgg: parsed.easterEgg,
     at: Date.now()
   });
