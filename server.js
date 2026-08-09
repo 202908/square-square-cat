@@ -881,6 +881,7 @@ function onlinePlayersForHost() {
     isHost: session.account.isHost,
     level: session.account.level,
     gender: session.account.gender || "private",
+    avatar: session.account.avatar || null,
     location: session.player.location,
     island: normalizeIslandCode(session.player.island || session.account.currentIsland || "A"),
     coins: session.account.coins,

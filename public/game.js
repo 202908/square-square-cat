@@ -327,6 +327,11 @@ function bindUi() {
   els.onlinePlayersButton.addEventListener("click", showOnlinePlayersModal);
   els.adminButton.addEventListener("click", showAdminModal);
   els.closeModal.addEventListener("click", closeModal);
+  document.addEventListener("click", (event) => {
+    const avatarButton = event.target.closest("[data-view-avatar]");
+    if (!avatarButton) return;
+    showAvatarModal(avatarButton.dataset.viewAvatar);
+  });
 }
 
 function bindCameraDrag() {
@@ -563,35 +568,64 @@ function genderMeta(gender) {
   return { symbol: "?", className: "gender-badge-private", label: "不透露" };
 }
 
-function genderBadgeHtml(gender) {
+function genderBadgeHtml(gender, extraClass = "") {
   const meta = genderMeta(gender);
-  return `<span class="gender-badge ${meta.className}" title="${meta.label}" aria-label="${meta.label}">${meta.symbol}</span>`;
+  return `<span class="gender-badge ${meta.className} ${extraClass}" title="${meta.label}" aria-label="${meta.label}">${meta.symbol}</span>`;
 }
 
 function avatarHtml(profile = {}, label = "玩家", options = {}) {
   const gender = profile?.gender || "private";
   const avatar = profile?.avatar || null;
-  const meta = genderMeta(gender);
   const id = options.id ? ` id="${escapeHtml(options.id)}"` : "";
   const sizeClass = options.large ? " avatar-large" : "";
   const plus = options.plus ? `<span class="avatar-plus">+</span>` : "";
-  const badge = `<span class="gender-badge ${meta.className} avatar-gender" title="${meta.label}" aria-label="${meta.label}">${meta.symbol}</span>`;
+  const viewCode = options.viewCode ? ` data-view-avatar="${escapeHtml(options.viewCode)}"` : "";
+  const tag = options.viewCode ? "button" : "span";
+  const type = options.viewCode ? " type=\"button\"" : "";
+  const buttonClass = options.viewCode ? " avatar-button" : "";
   if (avatar) {
-    return `<span${id} class="avatar${sizeClass} avatar-${escapeHtml(gender)}"><img src="${escapeHtml(avatar)}" alt="${escapeHtml(label)}的大頭照" />${badge}${plus}</span>`;
+    return `<${tag}${id}${type}${viewCode} class="avatar${sizeClass}${buttonClass} avatar-${escapeHtml(gender)}" aria-label="查看${escapeHtml(label)}的大頭照"><img src="${escapeHtml(avatar)}" alt="${escapeHtml(label)}的大頭照" />${plus}</${tag}>`;
   }
   return `
-    <span${id} class="avatar${sizeClass} avatar-default-cat avatar-${escapeHtml(gender)}" aria-label="${escapeHtml(label)}的大頭照">
+    <${tag}${id}${type}${viewCode} class="avatar${sizeClass}${buttonClass} avatar-default-cat avatar-${escapeHtml(gender)}" aria-label="查看${escapeHtml(label)}的大頭照">
       <span class="avatar-ear avatar-ear-left"></span>
       <span class="avatar-ear avatar-ear-right"></span>
-      ${badge}
       ${plus}
-    </span>
+    </${tag}>
   `;
 }
 
 function avatarNameHtml(code, profile = null) {
   const displayProfile = profile || friendProfile(code) || { gender: "private", avatar: null };
-  return `<span class="avatar-name-row">${avatarHtml(displayProfile, code)}<span>${escapeHtml(code)}</span></span>`;
+  return `
+    <span class="avatar-name-row">
+      <span class="avatar-name-main">
+        ${avatarHtml(displayProfile, code, { viewCode: code })}
+        <span class="avatar-name-text">${escapeHtml(code)}</span>
+      </span>
+      ${genderBadgeHtml(displayProfile.gender, "avatar-name-gender")}
+    </span>
+  `;
+}
+
+function profileForAvatar(code) {
+  if (state.account?.code === code) return state.account;
+  const friend = friendProfile(code);
+  if (friend) return friend;
+  const online = (state.onlinePlayers || []).find((player) => player.accountCode === code);
+  if (online) return { code: online.accountCode, gender: online.gender, avatar: online.avatar };
+  return { code, gender: "private", avatar: null };
+}
+
+function showAvatarModal(code) {
+  const profile = profileForAvatar(code);
+  openModal("大頭照", `
+    <div class="avatar-viewer">
+      ${avatarHtml(profile, code, { large: true })}
+      <strong>${escapeHtml(code)}</strong>
+      <span>${genderBadgeHtml(profile.gender)} ${genderMeta(profile.gender).label}</span>
+    </div>
+  `);
 }
 
 function updateAvatarPreview() {
@@ -607,7 +641,7 @@ function updateAvatarPreview() {
 function makeAvatarDataUrl(file) {
   return new Promise((resolve, reject) => {
     if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
-      reject(new Error("大頭照要用 PNG、JPG 或 WEBP 圖片。"));
+      reject(new Error("大頭照只能用 PNG、JPG 或 WEBP，不能用 GIF 或影片。"));
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
@@ -4095,7 +4129,11 @@ function showOnlinePlayersModal() {
       ${onlinePlayers.map((player) => `
         <div class="list-item">
           <div class="split">
-            <strong>${genderBadgeHtml(player.gender)}${escapeHtml(player.displayName || player.accountCode)}</strong>
+            <strong>${avatarNameHtml(player.accountCode, {
+              gender: player.gender,
+              avatar: player.avatar,
+              code: player.accountCode
+            })}</strong>
             <span>${player.isHost ? "主機" : `Lv. ${player.level || 1}`}</span>
           </div>
           <small>${islandLabel(player.island || state.account.currentIsland)} · ${locationLabel(player.location)} · 金幣 ${player.isHost ? "∞" : Number(player.coins || 0)} · 鑽石 ${player.isHost ? "∞" : Number(player.diamonds || 0)}</small>

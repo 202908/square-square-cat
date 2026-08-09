@@ -111,6 +111,8 @@ test("avatar data urls are normalized before saving to accounts", () => {
   const account = createAccount("avatar1", { avatar, gender: "female" });
   assert.equal(account.avatar, avatar);
   assert.equal(account.gender, "female");
+  assert.equal(normalizeAvatarDataUrl("data:image/gif;base64,R0lGODlhAQABAAAAACw="), null);
+  assert.equal(normalizeAvatarDataUrl("data:video/mp4;base64,AAAA"), null);
   assert.equal(normalizeAvatarDataUrl("data:image/svg+xml;base64,PHN2Zz4="), null);
   assert.equal(normalizeAvatarDataUrl(`data:image/png;base64,${"a".repeat(70000)}`), null);
 });

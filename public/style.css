@@ -191,6 +191,11 @@ select {
   vertical-align: middle;
 }
 
+.avatar-button {
+  min-height: 42px;
+  padding: 0;
+}
+
 .avatar-large {
   width: 78px;
   height: 78px;
@@ -257,21 +262,50 @@ select {
   font-weight: 900;
 }
 
-.avatar-gender {
+.avatar-name-row {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  padding: 4px 22px 4px 4px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.avatar-name-main {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+}
+
+.avatar-name-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.avatar-name-gender {
   position: absolute;
-  left: -1px;
-  bottom: -1px;
+  right: 3px;
+  bottom: 3px;
   width: 18px;
   height: 18px;
   margin: 0;
-  border: 1px solid rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.85);
   font-size: 11px;
 }
 
-.avatar-name-row {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
+.avatar-viewer {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 10px 0;
+}
+
+.avatar-viewer .avatar-large {
+  width: min(220px, 62vw);
+  height: min(220px, 62vw);
 }
 
 .hidden {
