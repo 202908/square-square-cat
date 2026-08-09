@@ -481,6 +481,9 @@ function updateAccount(message) {
   if (!els.modal.classList.contains("hidden") && els.modalTitle.textContent === "金幣代碼") {
     showCoinModal();
   }
+  if (!els.modal.classList.contains("hidden") && els.modalTitle.textContent === "背包") {
+    showBagModal();
+  }
 }
 
 function clientCanFly(account) {
