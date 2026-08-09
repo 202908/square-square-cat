@@ -640,8 +640,9 @@ function updateAvatarPreview() {
 
 function makeAvatarDataUrl(file) {
   return new Promise((resolve, reject) => {
-    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
-      reject(new Error("大頭照只能用 PNG、JPG 或 WEBP，不能用 GIF 或影片。"));
+    const blockedTypes = ["image/gif", "image/svg+xml"];
+    if (!file.type.startsWith("image/") || blockedTypes.includes(file.type)) {
+      reject(new Error("大頭照只能用照片圖片，不能用 GIF 或影片。"));
       return;
     }
     const reader = new FileReader();
@@ -658,8 +659,10 @@ function makeAvatarDataUrl(file) {
         canvas.height = 256;
         const ctx = canvas.getContext("2d");
         ctx.clearRect(0, 0, 256, 256);
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, 256, 256);
         ctx.drawImage(image, sx, sy, size, size, 0, 0, 256, 256);
-        resolve(canvas.toDataURL("image/webp", 0.82));
+        resolve(canvas.toDataURL("image/jpeg", 0.76));
       });
       image.src = reader.result;
     });
