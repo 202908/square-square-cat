@@ -954,14 +954,17 @@ function updateWorldState(message) {
   const ids = new Set(players.map((player) => player.id));
   for (const [id, mesh] of state.meshes) {
     if (!ids.has(id)) {
-      if (mesh.userData.trailGroup) scene.remove(mesh.userData.trailGroup);
-      scene.remove(mesh);
+      removeCatMesh(mesh);
       state.meshes.delete(id);
       state.players.delete(id);
     }
   }
   players.forEach((player) => {
     state.players.set(player.id, player);
+    if (state.meshes.has(player.id) && state.meshes.get(player.id).userData.catVariant !== player.catVariant) {
+      removeCatMesh(state.meshes.get(player.id));
+      state.meshes.delete(player.id);
+    }
     if (!state.meshes.has(player.id)) {
       const mesh = createCatMesh(player);
       state.meshes.set(player.id, mesh);
@@ -1149,7 +1152,13 @@ function createCatMesh(player) {
   const trailGroup = new THREE.Group();
   scene.add(trailGroup);
   group.userData = { label, texture, sprite, tail, hatGroup, clothesGroup, petGroup, lastName: "", trailGroup, trailPoints: [] };
+  group.userData.catVariant = player.catVariant;
   return group;
+}
+
+function removeCatMesh(mesh) {
+  if (mesh.userData.trailGroup) scene.remove(mesh.userData.trailGroup);
+  scene.remove(mesh);
 }
 
 function addPatch(group, x, y, z, color) {

@@ -2374,6 +2374,7 @@ function handleUseConsumable(socket, session, itemId, text) {
       return;
     }
     session.account.catVariant = pickRandomCatVariant(session.account.catVariant);
+    session.account.ownedCatVariants = normalizeOwnedCatVariants(session.account.ownedCatVariants, session.account.catVariant);
     persistSessionAccount(session);
     sendAccount(socket, session.account);
     send(socket, "notice", { message: "毛色更改成功，新的毛色已永久保存。" });
