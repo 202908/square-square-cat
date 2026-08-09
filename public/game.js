@@ -3845,6 +3845,7 @@ function showFriendsModal() {
           <div class="row">
             <button data-summon-friend="${escapeHtml(friend)}">召喚</button>
             <button data-gift-friend="${escapeHtml(friend)}">贈送</button>
+            <button data-remove-friend="${escapeHtml(friend)}">刪除</button>
           </div>
         </div>
       `).join("") || "<p>還沒有好友。</p>"}
@@ -3869,6 +3870,13 @@ function showFriendsModal() {
   });
   document.querySelectorAll("[data-summon-friend]").forEach((button) => {
     button.addEventListener("click", () => send("summonFriend", { friendCode: button.dataset.summonFriend }));
+  });
+  document.querySelectorAll("[data-remove-friend]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (window.confirm(`確定要刪除好友 ${button.dataset.removeFriend} 嗎？`)) {
+        send("removeFriend", { friendCode: button.dataset.removeFriend });
+      }
+    });
   });
   document.querySelectorAll("[data-accept-gift]").forEach((button) => {
     button.addEventListener("click", () => send("acceptGift", { giftId: button.dataset.acceptGift }));

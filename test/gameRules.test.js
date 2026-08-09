@@ -68,6 +68,7 @@ import {
   roomFurniturePlatforms,
   roomFurniturePlacement,
   redeemCode,
+  removeFriend,
   rocketLevelCanReachIsland,
   sendCoinGift,
   sendDiamondGift,
@@ -563,6 +564,14 @@ test("friends are unique and cannot be self", () => {
   assert.deepEqual(added.account.friends, ["def"]);
   assert.equal(addFriend(added.account, "def").ok, false);
   assert.equal(addFriend(added.account, "abc").ok, false);
+});
+
+test("friends can be removed from the friend list", () => {
+  const account = createAccount("abc", { friends: ["def", "ghi"] });
+  const removed = removeFriend(account, "def");
+  assert.equal(removed.ok, true);
+  assert.deepEqual(removed.account.friends, ["ghi"]);
+  assert.equal(removeFriend(removed.account, "def").ok, false);
 });
 
 test("house friends can enter without approval from either friend direction", () => {

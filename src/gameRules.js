@@ -1129,6 +1129,16 @@ export function addFriend(account, friendCode) {
   return { ok: true, account: nextAccount, message: "好友已加入。" };
 }
 
+export function removeFriend(account, friendCode) {
+  const code = normalizeAccountCode(friendCode);
+  if (!code || !(account.friends || []).includes(code)) {
+    return { ok: false, message: "找不到這個好友。" };
+  }
+  const nextAccount = structuredClone(account);
+  nextAccount.friends = (nextAccount.friends || []).filter((friend) => friend !== code);
+  return { ok: true, account: nextAccount, message: "好友已刪除。" };
+}
+
 export function areHouseFriends(visitorAccount, ownerAccount) {
   if (!visitorAccount || !ownerAccount) return false;
   return Boolean(

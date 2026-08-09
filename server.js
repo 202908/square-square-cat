@@ -64,6 +64,7 @@ import {
   normalizeWeatherMode,
   pickRandomCatVariant,
   redeemCode,
+  removeFriend,
   richestIslandWealthAccountCode,
   rocketParkingSpot,
   roomFurniturePlatforms,
@@ -622,6 +623,9 @@ function handleMessage(socket, message) {
       break;
     case "rejectFriend":
       handleRejectFriend(socket, session, message.friendCode);
+      break;
+    case "removeFriend":
+      handleRemoveFriend(socket, session, message.friendCode);
       break;
     case "adminUpsertCode":
       handleAdminUpsertCode(socket, session, message);
@@ -1812,6 +1816,35 @@ function handleRejectFriend(socket, session, friendCode) {
   persistSessionAccount(session);
   sendAccount(socket, session.account);
   send(socket, "notice", { message: "已拒絕好友申請。" });
+}
+
+function handleRemoveFriend(socket, session, friendCode) {
+  const code = String(friendCode || "").trim();
+  const result = removeFriend(session.account, code);
+  if (!result.ok) {
+    send(socket, "notice", { message: result.message });
+    return;
+  }
+  session.account = result.account;
+  persistSessionAccount(session);
+  const otherSession = findSessionByAccountCode(code);
+  const otherAccount = otherSession?.account || accounts[code];
+  if (otherAccount) {
+    const otherResult = removeFriend(otherAccount, session.account.code);
+    if (otherResult.ok) {
+      if (otherSession) {
+        otherSession.account = otherResult.account;
+        persistSessionAccount(otherSession);
+        sendAccount(otherSession.socket, otherSession.account);
+        send(otherSession.socket, "notice", { message: `${displayNameFor(session.account)} 已移除好友關係。` });
+      } else {
+        accounts[otherResult.account.code] = otherResult.account;
+        saveAccounts();
+      }
+    }
+  }
+  sendAccount(socket, session.account);
+  send(socket, "notice", { message: `已刪除好友 ${code}。` });
 }
 
 function handleSendGift(socket, session, friendCode, itemId) {
