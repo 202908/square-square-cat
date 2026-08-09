@@ -93,6 +93,18 @@ export const CHAT_TEXT_COLORS = {
   mint: "#8fffd2"
 };
 export const HOST_CHAT_COLOR_CYCLE = ["blue", "white", "pink"];
+export const CHAT_MESSAGE_VISIBILITIES = {
+  friends: { id: "friends", token: "friend", name: "只給好友看" }
+};
+export const CHAT_MESSAGE_DECORATIONS = {
+  jellyfish: { id: "jellyfish", name: "水母", token: "jellyfish", color: "#74d8ff", icon: "水母" },
+  candy: { id: "candy", name: "糖果", token: "candy", color: "#ff8fcb", icon: "糖果" },
+  coin: { id: "coin", name: "金幣", token: "coin", color: "#f7c948", icon: "金幣" },
+  snake: { id: "snake", name: "蛇蛇", token: "snake", color: "#67d88a", icon: "蛇" },
+  planet: { id: "planet", name: "星球", token: "planet", color: "#b78cff", icon: "星球" },
+  bow: { id: "bow", name: "蝴蝶結", token: "bow", color: "#ff9bd7", icon: "蝴蝶結" },
+  strawberry: { id: "strawberry", name: "草莓", token: "strawberry", color: "#ff7aa8", icon: "草莓" }
+};
 export const CHAT_EASTER_EGGS = [
   { id: "meow", name: "喵喵足跡", triggers: ["喵", "meow", "cat"], icon: "🐾" },
   { id: "rainbow", name: "彩虹閃閃", triggers: ["彩虹", "rainbow"], icon: "🌈" },
@@ -717,17 +729,26 @@ export function normalizeAvatarDataUrl(value) {
 
 export function parseChatMessage(rawText) {
   const raw = String(rawText || "").slice(0, 180);
-  const colorMatch = raw.match(/@\(([a-z]+)\)\s*$/);
-  const color = colorMatch && CHAT_TEXT_COLORS[colorMatch[1]] ? colorMatch[1] : null;
-  const text = (color ? raw.slice(0, colorMatch.index) : raw).trim().slice(0, 160);
+  const suffixMatch = raw.match(/@\(([a-z]+)\)(?:\(([a-z]+)\))?\s*$/);
+  const suffixes = suffixMatch ? [suffixMatch[1], suffixMatch[2]].filter(Boolean) : [];
+  const color = suffixes.find((suffix) => CHAT_TEXT_COLORS[suffix]) || null;
+  const decorationKey = suffixes.find((suffix) => CHAT_MESSAGE_DECORATIONS[suffix]) || null;
+  const visibility = suffixes.includes(CHAT_MESSAGE_VISIBILITIES.friends.token) ? CHAT_MESSAGE_VISIBILITIES.friends.id : null;
+  const decoration = decorationKey ? CHAT_MESSAGE_DECORATIONS[decorationKey] : null;
+  const shouldHideSuffix = Boolean(color || decoration || visibility);
+  const text = (shouldHideSuffix ? raw.slice(0, suffixMatch.index) : raw).trim().slice(0, 160);
   const lowered = text.toLowerCase();
   const easterEgg = CHAT_EASTER_EGGS.find((egg) =>
     egg.triggers.some((trigger) => lowered.includes(String(trigger).toLowerCase()))
   ) || null;
   return {
     text,
-    color,
-    colorValue: color ? CHAT_TEXT_COLORS[color] : null,
+    color: color || decoration?.id || null,
+    colorValue: color ? CHAT_TEXT_COLORS[color] : decoration?.color || null,
+    visibility,
+    decoration: decoration
+      ? { id: decoration.id, name: decoration.name, token: decoration.token, color: decoration.color, icon: decoration.icon }
+      : null,
     easterEgg: easterEgg ? { id: easterEgg.id, name: easterEgg.name, icon: easterEgg.icon } : null
   };
 }
@@ -735,15 +756,17 @@ export function parseChatMessage(rawText) {
 export function applyHostChatColor(parsedMessage, account, currentIndex = 0) {
   const parsed = parsedMessage || {};
   const index = Math.max(0, Number(currentIndex || 0));
-  if (!account?.isHost || parsed.color) {
+  if (!account?.isHost || parsed.color || parsed.decoration) {
     return { message: parsed, nextIndex: index };
   }
   const color = HOST_CHAT_COLOR_CYCLE[index % HOST_CHAT_COLOR_CYCLE.length];
+  const decoration = CHAT_MESSAGE_DECORATIONS.strawberry;
   return {
     message: {
       ...parsed,
       color,
-      colorValue: CHAT_TEXT_COLORS[color]
+      colorValue: CHAT_TEXT_COLORS[color],
+      decoration: { id: decoration.id, name: decoration.name, token: decoration.token, color: decoration.color, icon: decoration.icon }
     },
     nextIndex: index + 1
   };

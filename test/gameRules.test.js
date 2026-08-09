@@ -12,6 +12,8 @@ import {
   FURNITURE_ITEMS,
   FREE_ISLAND_CODES,
   GENDER_OPTIONS,
+  CHAT_MESSAGE_DECORATIONS,
+  CHAT_MESSAGE_VISIBILITIES,
   HOST_CHAT_COLOR_CYCLE,
   HOST_AVATAR_URL,
   HOST_DEFAULT_HOUSE,
@@ -133,19 +135,62 @@ test("chat color suffix hides the suffix and applies a safe color", () => {
   assert.equal(invalid.color, null);
 });
 
+test("chat decoration suffix hides the suffix and applies a known decoration", () => {
+  const parsed = parseChatMessage("hello@(jellyfish)");
+  assert.equal(parsed.text, "hello");
+  assert.equal(parsed.color, "jellyfish");
+  assert.equal(parsed.decoration.id, "jellyfish");
+
+  const bow = parseChatMessage("hello@(bow)");
+  assert.equal(bow.decoration.name, "蝴蝶結");
+});
+
+test("chat suffix can combine one color and one decoration", () => {
+  const parsed = parseChatMessage("hello@(pink)(strawberry)");
+  assert.equal(parsed.text, "hello");
+  assert.equal(parsed.color, "pink");
+  assert.equal(parsed.colorValue, "#ff8fcb");
+  assert.equal(parsed.decoration.id, "strawberry");
+
+  const reversed = parseChatMessage("hello@(strawberry)(blue)");
+  assert.equal(reversed.text, "hello");
+  assert.equal(reversed.color, "blue");
+  assert.equal(reversed.decoration.id, "strawberry");
+});
+
+test("chat friend suffix hides the suffix and marks friend-only visibility", () => {
+  const parsed = parseChatMessage("hello@(friend)");
+  assert.equal(parsed.text, "hello");
+  assert.equal(parsed.visibility, CHAT_MESSAGE_VISIBILITIES.friends.id);
+  assert.equal(parsed.color, null);
+  assert.equal(parsed.decoration, null);
+
+  const colored = parseChatMessage("hello@(pink)(friend)");
+  assert.equal(colored.text, "hello");
+  assert.equal(colored.color, "pink");
+  assert.equal(colored.visibility, "friends");
+});
+
 test("host chat cycles blue white pink unless a color suffix overrides it", () => {
   const host = createAccount("host", { isHost: true });
   assert.deepEqual(HOST_CHAT_COLOR_CYCLE, ["blue", "white", "pink"]);
+  assert.equal(CHAT_MESSAGE_DECORATIONS.strawberry.name, "草莓");
 
   const first = applyHostChatColor(parseChatMessage("嗨"), host, 0);
   assert.equal(first.message.color, "blue");
+  assert.equal(first.message.decoration.id, "strawberry");
   assert.equal(first.nextIndex, 1);
 
   const override = applyHostChatColor(parseChatMessage("嗨@(pink)"), host, first.nextIndex);
   assert.equal(override.message.color, "pink");
   assert.equal(override.nextIndex, 1);
 
-  const second = applyHostChatColor(parseChatMessage("嗨"), host, override.nextIndex);
+  const decorated = applyHostChatColor(parseChatMessage("嗨@(candy)"), host, override.nextIndex);
+  assert.equal(decorated.message.color, "candy");
+  assert.equal(decorated.message.decoration.id, "candy");
+  assert.equal(decorated.nextIndex, 1);
+
+  const second = applyHostChatColor(parseChatMessage("嗨"), host, decorated.nextIndex);
   assert.equal(second.message.color, "white");
   assert.equal(second.nextIndex, 2);
 });

@@ -325,6 +325,75 @@ select {
   animation: chat-pop 420ms ease-out;
 }
 
+.chat-decorated {
+  display: block;
+}
+
+.chat-message-text {
+  font-weight: 800;
+}
+
+.chat-decoration-mark {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  margin: 0 4px;
+  vertical-align: -4px;
+  align-items: center;
+  justify-content: center;
+}
+
+.chat-decoration-mark::before {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  font-size: 18px;
+  line-height: 1;
+  filter: drop-shadow(0 2px 4px rgba(20, 20, 35, 0.2));
+}
+
+.chat-decoration-left::before {
+  transform: scaleX(-1);
+}
+
+.chat-decoration-jellyfish .chat-decoration-mark::before { content: "༄"; color: #74d8ff; }
+.chat-decoration-candy .chat-decoration-mark::before { content: "◆"; color: #ff8fcb; }
+.chat-decoration-coin .chat-decoration-mark::before { content: "●"; color: #f7c948; }
+.chat-decoration-snake .chat-decoration-mark::before { content: "〰"; color: #67d88a; }
+.chat-decoration-planet .chat-decoration-mark::before { content: "◉"; color: #b78cff; }
+.chat-decoration-bow .chat-decoration-mark::before { content: "⋈"; color: #ff9bd7; }
+
+.chat-decoration-strawberry .chat-decoration-mark {
+  position: relative;
+}
+
+.chat-decoration-strawberry .chat-decoration-mark::before {
+  content: "";
+  width: 16px;
+  height: 18px;
+  border-radius: 9px 9px 11px 11px;
+  background:
+    radial-gradient(circle at 34% 36%, #fff 0 1px, transparent 1.6px),
+    radial-gradient(circle at 65% 44%, #fff 0 1px, transparent 1.6px),
+    radial-gradient(circle at 48% 66%, #fff 0 1px, transparent 1.6px),
+    linear-gradient(145deg, #ff9ac5, #ff5f8e);
+  clip-path: polygon(50% 100%, 28% 82%, 10% 52%, 8% 25%, 24% 5%, 43% 16%, 50% 28%, 57% 16%, 76% 5%, 92% 25%, 90% 52%, 72% 82%);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+}
+
+.chat-decoration-strawberry .chat-decoration-mark::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 5px;
+  width: 10px;
+  height: 7px;
+  background: linear-gradient(135deg, #77d989, #3fbf67);
+  clip-path: polygon(50% 0, 64% 42%, 100% 25%, 73% 63%, 88% 100%, 50% 72%, 12% 100%, 27% 63%, 0 25%, 36% 42%);
+}
+
 .chat-easter-icon {
   display: inline-block;
   margin-left: 6px;

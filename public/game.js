@@ -22,6 +22,7 @@ const state = {
   rocketUpgradeCosts: [0, 300, 700, 1200, 1800],
   coinCodes: {},
   chatEasterEggs: [],
+  chatDecorations: {},
   chatTextColors: {},
   titleCatalog: {},
   titleColors: {},
@@ -491,6 +492,7 @@ function updateAccount(message) {
   state.rocketUpgradeCosts = message.rocketUpgradeCosts || state.rocketUpgradeCosts;
   state.coinCodes = message.coinCodes || state.coinCodes;
   state.chatEasterEggs = message.chatEasterEggs || state.chatEasterEggs;
+  state.chatDecorations = message.chatDecorations || state.chatDecorations;
   state.chatTextColors = message.chatTextColors || state.chatTextColors;
   state.titleCatalog = message.titleCatalog || state.titleCatalog;
   state.titleColors = message.titleColors || state.titleColors;
@@ -4173,6 +4175,9 @@ function showAdminModal() {
   const chatColorRows = Object.entries(state.chatTextColors || {}).map(([id, value]) => `
     <span class="tag" style="color:${escapeHtml(value)}">@(${escapeHtml(id)})</span>
   `).join(" ");
+  const chatDecorationRows = Object.values(state.chatDecorations || {}).map((decoration) => `
+    <span class="tag chat-decoration-sample chat-decoration-${cssToken(decoration.id)}">${escapeHtml(decoration.name)} @(${escapeHtml(decoration.token || decoration.id)})</span>
+  `).join(" ");
   const chatEggRows = (state.chatEasterEggs || []).map((egg) => `
     <div class="list-item">
       <div class="split">
@@ -4218,8 +4223,9 @@ function showAdminModal() {
     </section>
     <section class="list">
       <strong>聊天彩蛋</strong>
-      <p class="muted-line">顏色語法放在訊息最後，例如 hello@(pink)，送出後只會顯示 hello。</p>
+      <p class="muted-line">顏色或裝飾語法放在訊息最後，例如 hello@(pink)(strawberry)，送出後只會顯示 hello。</p>
       <div>${chatColorRows}</div>
+      <div>${chatDecorationRows}</div>
       ${chatEggRows}
     </section>
     <form id="adminTitleForm" class="list">
@@ -4331,20 +4337,37 @@ function closeModal() {
 }
 
 function renderChat(chatLog) {
+  const messageClasses = (message) => [
+    message.easterEgg ? "chat-easter-egg" : "",
+    message.decoration ? "chat-decorated" : "",
+    message.decoration ? `chat-decoration-${cssToken(message.decoration.id)}` : ""
+  ].filter(Boolean).join(" ");
   els.chatLog.innerHTML = chatLog.map((message) => `
-    <div class="${message.easterEgg ? "chat-easter-egg" : ""}">
+    <div class="${messageClasses(message)}">
       <strong>${escapeHtml(message.sender)}:</strong>
-      <span style="${chatMessageStyle(message)}">${escapeHtml(message.text)}</span>
+      ${chatDecorationHtml(message, "left")}
+      <span class="chat-message-text" style="${chatMessageStyle(message)}">${escapeHtml(message.text)}</span>
+      ${chatDecorationHtml(message, "right")}
       ${message.easterEgg ? `<span class="chat-easter-icon" title="${escapeHtml(message.easterEgg.name)}">${escapeHtml(message.easterEgg.icon || "✨")}</span>` : ""}
     </div>
   `).join("");
   els.chatLog.scrollTop = els.chatLog.scrollHeight;
 }
 
+function chatDecorationHtml(message, side) {
+  if (!message.decoration?.id) return "";
+  const name = escapeHtml(message.decoration.name || message.decoration.id);
+  return `<span class="chat-decoration-mark chat-decoration-${side}" aria-label="${name}"></span>`;
+}
+
 function chatMessageStyle(message) {
   const color = String(message.colorValue || "");
   if (!/^#[0-9a-f]{6}$/i.test(color)) return "";
   return `color:${color}`;
+}
+
+function cssToken(value) {
+  return String(value || "").replace(/[^a-z0-9_-]/gi, "");
 }
 
 function showNotice(text) {

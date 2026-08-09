@@ -9,6 +9,7 @@ import {
   BLIND_BOX_BASE_DIAMOND_COST,
   COIN_TO_DIAMOND_RATE,
   CHAT_EASTER_EGGS,
+  CHAT_MESSAGE_DECORATIONS,
   CHAT_TEXT_COLORS,
   DEFAULT_COIN_CODES,
   DEFAULT_TITLE_ID,
@@ -778,7 +779,7 @@ function enterWorld(socket, account, persistent, options = {}) {
     hostIslandCode: HOST_ISLAND_CODE,
     levelRewards: LEVEL_REWARDS,
     coinCodes: account.isHost ? coinCodes : undefined,
-    chatLog
+    chatLog: filteredChatLogFor(account)
   });
   if (options.announceNewAccount) {
     broadcast("notice", { message: `${displayNameFor(account)} 第一次進入貓眼星雲。` });
@@ -2767,6 +2768,7 @@ function sendAccount(socket, account) {
     titleColors: TITLE_COLORS,
     titlePlayers: account.isHost ? titlePlayers() : undefined,
     chatEasterEggs: account.isHost ? CHAT_EASTER_EGGS : undefined,
+    chatDecorations: account.isHost ? CHAT_MESSAGE_DECORATIONS : undefined,
     chatTextColors: account.isHost ? CHAT_TEXT_COLORS : undefined,
     onlinePlayers: account.isHost ? onlinePlayersForHost() : undefined
   });
@@ -3035,17 +3037,37 @@ function addChat(session, rawText) {
     text,
     color: parsed.color,
     colorValue: parsed.colorValue,
+    visibility: parsed.visibility,
+    decoration: parsed.decoration,
     easterEgg: parsed.easterEgg,
     at: Date.now()
   });
   chatLog = chatLog.slice(-30);
-  broadcast("chat", { chatLog });
+  broadcastChatLog();
 }
 
 function addSystemChat(text) {
   chatLog.push({ sender: "系統", text: String(text || "").slice(0, 160), at: Date.now() });
   chatLog = chatLog.slice(-30);
-  broadcast("chat", { chatLog });
+  broadcastChatLog();
+}
+
+function filteredChatLogFor(viewerAccount) {
+  return chatLog.filter((message) => canViewChatMessage(viewerAccount, message));
+}
+
+function canViewChatMessage(viewerAccount, message) {
+  if (message.visibility !== "friends") return true;
+  if (!viewerAccount?.code || !message.sender) return false;
+  if (viewerAccount.code === message.sender) return true;
+  const senderAccount = accounts[message.sender];
+  return Boolean(senderAccount?.friends?.includes(viewerAccount.code));
+}
+
+function broadcastChatLog() {
+  for (const session of sessions.values()) {
+    send(session.socket, "chat", { chatLog: filteredChatLogFor(session.account) });
+  }
 }
 
 function islandHeight(x, z) {
