@@ -1924,27 +1924,35 @@ function updateFerrisMesh(ferris) {
   if (!ferrisWheelGroup || !ferris) return;
   ferrisWheelGroup.rotation.z = ferris.angle || 0;
   ferrisIconGroup.rotation.z = -(ferris.angle || 0);
-  ferrisCabinGroup.clear();
-  const cabinMaterial = new THREE.MeshStandardMaterial({ color: 0xffc5dc, roughness: 0.55 });
-  const roofMaterial = new THREE.MeshStandardMaterial({ color: 0xbfe8ff, roughness: 0.5 });
-  for (let index = 0; index < ferris.seats; index += 1) {
+  if (ferrisCabinGroup.userData.seats !== ferris.seats || ferrisCabinGroup.userData.radius !== ferris.radius) {
+    ferrisCabinGroup.clear();
+    ferrisCabinGroup.userData.seats = ferris.seats;
+    ferrisCabinGroup.userData.radius = ferris.radius;
+    const cabinMaterial = new THREE.MeshStandardMaterial({ color: 0xffc5dc, roughness: 0.55 });
+    const roofMaterial = new THREE.MeshStandardMaterial({ color: 0xbfe8ff, roughness: 0.5 });
+    for (let index = 0; index < ferris.seats; index += 1) {
+      const cabin = new THREE.Group();
+      const box = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.4, 2), cabinMaterial);
+      cabin.add(box);
+      const roof = new THREE.Mesh(new THREE.ConeGeometry(1.55, 0.8, 4), roofMaterial);
+      roof.position.y = 0.95;
+      roof.rotation.y = Math.PI / 4;
+      cabin.add(roof);
+      ferrisCabinGroup.add(cabin);
+    }
+  }
+  ferrisCabinGroup.children.forEach((cabin, index) => {
     const angle = (index * Math.PI * 2) / ferris.seats;
-    const cabin = new THREE.Group();
     cabin.position.set(Math.sin(angle) * ferris.radius, -Math.cos(angle) * ferris.radius, 0);
     cabin.rotation.z = -(ferris.angle || 0);
-    const box = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.4, 2), cabinMaterial);
-    cabin.add(box);
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(1.55, 0.8, 4), roofMaterial);
-    roof.position.y = 0.95;
-    roof.rotation.y = Math.PI / 4;
-    cabin.add(roof);
-    ferrisCabinGroup.add(cabin);
-  }
+  });
   updateFerrisIcon(ferris.icon || "jump-cat");
 }
 
 function updateFerrisIcon(icon) {
   if (!ferrisIconGroup) return;
+  if (ferrisIconGroup.userData.icon === icon) return;
+  ferrisIconGroup.userData.icon = icon;
   ferrisIconGroup.clear();
   const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.55 });
   const accentMaterial = new THREE.MeshStandardMaterial({ color: 0xffc5dc, roughness: 0.55 });
@@ -2174,6 +2182,8 @@ function updateTailMesh(tail, player) {
 
 function updateHatMesh(group, hatId) {
   if (!group) return;
+  if (group.userData.itemId === (hatId || null)) return;
+  group.userData.itemId = hatId || null;
   group.clear();
   if (!hatId) return;
   const color = itemColor(hatId);
@@ -2193,6 +2203,8 @@ function updateHatMesh(group, hatId) {
 
 function updateClothesMesh(group, clothesId) {
   if (!group) return;
+  if (group.userData.itemId === (clothesId || null)) return;
+  group.userData.itemId = clothesId || null;
   group.clear();
   if (!clothesId) return;
   if (clothesId.includes("wing") || clothesId === "wings") {
@@ -2225,9 +2237,19 @@ function addWingPair(group) {
 
 function updatePetMesh(group, player) {
   if (!group) return;
-  group.clear();
   const petId = player.equipped?.pet;
-  if (!petId || player.location === "challenge") return;
+  const bob = Math.sin(Date.now() * 0.004) * 0.12;
+  group.position.y = bob;
+  if (!petId || player.location === "challenge") {
+    if (group.userData.itemId) group.clear();
+    group.userData.itemId = null;
+    group.userData.catVariant = null;
+    return;
+  }
+  if (group.userData.itemId === petId && group.userData.catVariant === player.catVariant) return;
+  group.clear();
+  group.userData.itemId = petId;
+  group.userData.catVariant = player.catVariant;
   const palette = catPalette(player.catVariant);
   const material = new THREE.MeshStandardMaterial({ color: palette.body, roughness: 0.58 });
   const faceMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
@@ -2235,41 +2257,40 @@ function updatePetMesh(group, player) {
   const eyeMaterial = new THREE.MeshBasicMaterial({ color: 0x1f2630 });
   const mouthMaterial = new THREE.MeshBasicMaterial({ color: 0x1f2630 });
   const noseMaterial = new THREE.MeshBasicMaterial({ color: 0xff8fcb });
-  const bob = Math.sin(Date.now() * 0.004) * 0.12;
   const body = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.56, 0.72), material);
-  body.position.set(-1.45, 0.42 + bob, -2.05);
+  body.position.set(-1.45, 0.42, -2.05);
   group.add(body);
   const suit = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.32, 0.76), suitMaterial);
-  suit.position.set(-1.45, 0.34 + bob, -2.02);
+  suit.position.set(-1.45, 0.34, -2.02);
   group.add(suit);
   const head = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.52, 0.48), material);
-  head.position.set(-1.45, 0.95 + bob, -1.72);
+  head.position.set(-1.45, 0.95, -1.72);
   group.add(head);
   const face = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.2), faceMaterial);
-  face.position.set(-1.45, 0.95 + bob, -1.47);
+  face.position.set(-1.45, 0.95, -1.47);
   group.add(face);
   [-0.09, 0.09].forEach((x) => {
     const eye = new THREE.Mesh(new THREE.CircleGeometry(0.035, 16), eyeMaterial);
-    eye.position.set(-1.45 + x, 1 + bob, -1.465);
+    eye.position.set(-1.45 + x, 1, -1.465);
     group.add(eye);
   });
   const nose = new THREE.Mesh(new THREE.CircleGeometry(0.025, 12), noseMaterial);
-  nose.position.set(-1.45, 0.935 + bob, -1.462);
+  nose.position.set(-1.45, 0.935, -1.462);
   group.add(nose);
   [-0.035, 0.035].forEach((x, index) => {
     const mouth = new THREE.Mesh(new THREE.TorusGeometry(0.038, 0.006, 6, 18, Math.PI), mouthMaterial);
-    mouth.position.set(-1.45 + x, 0.905 + bob, -1.46);
+    mouth.position.set(-1.45 + x, 0.905, -1.46);
     mouth.rotation.z = index === 0 ? Math.PI * 1.12 : Math.PI * 0.88;
     group.add(mouth);
   });
   [-0.22, 0.22].forEach((x) => {
     const ear = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.26, 4), material);
-    ear.position.set(-1.45 + x, 1.32 + bob, -1.75);
+    ear.position.set(-1.45 + x, 1.32, -1.75);
     ear.rotation.y = Math.PI / 4;
     group.add(ear);
   });
   const tail = new THREE.Mesh(new THREE.CapsuleGeometry(0.07, 0.5, 4, 10), material);
-  tail.position.set(-1.45, 0.62 + bob, -2.48);
+  tail.position.set(-1.45, 0.62, -2.48);
   tail.rotation.x = Math.PI / 2.6;
   tail.rotation.z = 0;
   group.add(tail);
@@ -2293,6 +2314,7 @@ function updateTrail(mesh, player) {
   }
   if (mesh.userData.lastTrailId && mesh.userData.lastTrailId !== trailId) {
     points.length = 0;
+    mesh.userData.trailGroup.clear();
   }
   mesh.userData.lastTrailId = trailId;
   const now = Date.now();
@@ -2306,13 +2328,21 @@ function updateTrail(mesh, player) {
     });
   }
   while (points.length && now - points.at(-1).time > 5000) points.pop();
-  mesh.userData.trailGroup.clear();
   points.forEach((point, index) => {
     const ageRatio = Math.min(1, (now - point.time) / 5000);
-    const meshlet = createTrailParticle(trailId, index, ageRatio);
+    let meshlet = mesh.userData.trailGroup.children[index];
+    if (!meshlet) {
+      meshlet = createTrailParticle(trailId, index, ageRatio);
+      mesh.userData.trailGroup.add(meshlet);
+    }
+    meshlet.visible = true;
+    meshlet.material.color.setHex(trailColor(trailId, index));
+    meshlet.material.opacity = Math.max(0, 0.62 * (1 - ageRatio));
     meshlet.position.set(point.x, point.y, point.z);
     meshlet.scale.setScalar(0.35 + 0.65 * (1 - ageRatio));
-    mesh.userData.trailGroup.add(meshlet);
+  });
+  mesh.userData.trailGroup.children.slice(points.length).forEach((meshlet) => {
+    meshlet.visible = false;
   });
 }
 
