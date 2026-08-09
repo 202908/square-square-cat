@@ -1,8 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  BLIND_BOX_BASE_DIAMOND_COST,
+  BLIND_BOX_PITY_DRAWS,
   CAT_VARIANTS,
   CAT_VARIANT_RARITIES,
+  COIN_TO_DIAMOND_RATE,
   DEFAULT_TITLE_ID,
   DEFAULT_TITLES,
   FURNITURE_ITEMS,
@@ -18,6 +21,7 @@ import {
   LEVEL_TASKS,
   MAX_CHALLENGE_STEP_Y,
   MAX_PLAYER_LEVEL,
+  MONTHLY_CAT_VARIANTS,
   REMOVED_ITEM_IDS,
   ROOM_BOUNDS,
   ROCKET_MAX_LEVEL,
@@ -28,6 +32,8 @@ import {
   applyHousePaint,
   areHouseFriends,
   buyItem,
+  blindBoxCostForDraw,
+  blindBoxStateForAccount,
   canTravelToIsland,
   challengeLevelForAccounts,
   challengeFinishForLevel,
@@ -36,8 +42,12 @@ import {
   createAccount,
   createHostDefaultRoomItems,
   damageAdultThirst,
+  drawMonthlyBlindBox,
   equipItem,
+  exchangeCoinsForDiamonds,
   getChallengePlatforms,
+  claimHostDayGift,
+  hostDayGiftState,
   levelTaskProgress,
   updateSurvivalStats,
   damageMonster,
@@ -47,6 +57,7 @@ import {
   rocketParkingSpot,
   isValidNewAccountCode,
   makeGuestAccount,
+  monthlyCatVariantForMonth,
   normalizeGender,
   normalizeIslandCode,
   normalizeWeatherMode,
@@ -118,6 +129,80 @@ test("random cat skin picker can exclude the current skin", () => {
   } finally {
     Math.random = originalRandom;
   }
+});
+
+test("monthly blind box has one limited skin for every month", () => {
+  assert.equal(MONTHLY_CAT_VARIANTS.length, 12);
+  assert.equal(BLIND_BOX_BASE_DIAMOND_COST, 10);
+  assert.equal(BLIND_BOX_PITY_DRAWS, 10);
+  assert.equal(COIN_TO_DIAMOND_RATE, 10);
+  assert.equal(blindBoxCostForDraw(1), 10);
+  assert.equal(blindBoxCostForDraw(2), 15);
+  assert.equal(blindBoxCostForDraw(3), 23);
+  for (let month = 1; month <= 12; month += 1) {
+    const variant = monthlyCatVariantForMonth(month);
+    assert.equal(variant.month, month);
+    assert.equal(CAT_VARIANTS.includes(variant.id), true);
+    assert.equal(CAT_VARIANT_RARITIES.some((entry) => entry.id === variant.id), false);
+  }
+  assert.equal(monthlyCatVariantForMonth(12).tier, "special");
+});
+
+test("coins can convert to diamonds but not back to coins", () => {
+  const account = createAccount("trade", { coins: 25, diamonds: 1 });
+  const exchanged = exchangeCoinsForDiamonds(account, 2);
+  assert.equal(exchanged.ok, true);
+  assert.equal(exchanged.account.coins, 5);
+  assert.equal(exchanged.account.diamonds, 3);
+  assert.equal(exchangeCoinsForDiamonds(exchanged.account, 1).ok, false);
+});
+
+test("monthly blind box uses chance and guarantees the tenth draw", () => {
+  const date = new Date("2026-08-09T00:00:00Z");
+  const firstAccount = createAccount("box", { diamonds: 200, catVariant: "black" });
+  const miss = drawMonthlyBlindBox(firstAccount, date, () => 0.99);
+  assert.equal(miss.ok, true);
+  assert.equal(miss.won, false);
+  assert.equal(miss.account.catVariant, "black");
+  assert.equal(miss.account.diamonds, 190);
+  assert.equal(blindBoxStateForAccount(miss.account, date).nextCost, 15);
+
+  const pityAccount = createAccount("pity", {
+    diamonds: 1000,
+    catVariant: "black",
+    blindBoxPity: { month: 8, draws: 9 }
+  });
+  const result = drawMonthlyBlindBox(pityAccount, date, () => 0.99);
+  assert.equal(result.ok, true);
+  assert.equal(result.won, true);
+  assert.equal(result.variant.id, "augNebula");
+  assert.equal(result.account.catVariant, "augNebula");
+  assert.equal(result.account.blindBoxPity.draws, 0);
+
+  const host = createAccount("host", { isHost: true, diamonds: 999999999, catVariant: "host" });
+  const hostResult = drawMonthlyBlindBox(host, date);
+  assert.equal(hostResult.ok, false);
+  assert.equal(hostResult.message.includes("主機貓"), true);
+});
+
+test("host day gift can be claimed once per year on December 27", () => {
+  const account = createAccount("host-day", { coins: 0, diamonds: 0 });
+  const before = claimHostDayGift(account, new Date("2026-12-26T12:00:00Z"));
+  assert.equal(before.ok, false);
+
+  const first = claimHostDayGift(account, new Date("2026-12-27T12:00:00Z"));
+  assert.equal(first.ok, true);
+  assert.equal(first.account.coins, 100);
+  assert.equal(first.account.diamonds, 50);
+  assert.equal(hostDayGiftState(first.account, new Date("2026-12-27T13:00:00Z")).claimed, true);
+
+  const duplicate = claimHostDayGift(first.account, new Date("2026-12-27T14:00:00Z"));
+  assert.equal(duplicate.ok, false);
+
+  const nextYear = claimHostDayGift(first.account, new Date("2027-12-27T12:00:00Z"));
+  assert.equal(nextYear.ok, true);
+  assert.equal(nextYear.account.coins, 200);
+  assert.equal(nextYear.account.diamonds, 100);
 });
 
 test("account gender display uses fixed choices and falls back to private", () => {

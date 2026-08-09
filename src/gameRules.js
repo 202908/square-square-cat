@@ -6,7 +6,11 @@ export const HOST_CODE = process.env.HOST_ACCOUNT_CODE || null;
 export const HOST_PASSWORD = process.env.HOST_PASSWORD || null;
 
 export const DEFAULT_COIN_CODES = {};
-export const CAT_VARIANTS = ["black", "white", "calico", "orange", "blue", "moonPinkEar", "storm", "lavender", "mint", "gold", "chocolate"];
+export const CAT_VARIANTS = [
+  "black", "white", "calico", "orange", "blue", "moonPinkEar", "storm", "lavender", "mint", "gold", "chocolate",
+  "janSnow", "febHeart", "marSakura", "aprRain", "mayEmerald", "junOcean",
+  "julSunset", "augNebula", "sepMooncake", "octPumpkin", "novAurora", "decStarlight"
+];
 export const CAT_VARIANT_RARITIES = [
   { id: "black", weight: 18, rarity: "common" },
   { id: "white", weight: 18, rarity: "common" },
@@ -21,6 +25,32 @@ export const CAT_VARIANT_RARITIES = [
   { id: "moonPinkEar", weight: 2, rarity: "ultraRare" }
 ];
 export const GENDER_OPTIONS = ["male", "female", "private"];
+export const BLIND_BOX_BASE_DIAMOND_COST = 10;
+export const BLIND_BOX_PITY_DRAWS = 10;
+export const BLIND_BOX_WIN_CHANCE = 0.16;
+export const COIN_TO_DIAMOND_RATE = 10;
+export const HOST_DAY_GIFT = {
+  id: "host-day-12-27",
+  month: 12,
+  day: 27,
+  coins: 100,
+  diamonds: 50,
+  name: "主機日禮包"
+};
+export const MONTHLY_CAT_VARIANTS = [
+  { month: 1, id: "janSnow", name: "一月雪光貓" },
+  { month: 2, id: "febHeart", name: "二月愛心貓" },
+  { month: 3, id: "marSakura", name: "三月櫻花貓" },
+  { month: 4, id: "aprRain", name: "四月雨滴貓" },
+  { month: 5, id: "mayEmerald", name: "五月翡翠貓" },
+  { month: 6, id: "junOcean", name: "六月海洋貓" },
+  { month: 7, id: "julSunset", name: "七月夕陽貓" },
+  { month: 8, id: "augNebula", name: "八月星雲貓" },
+  { month: 9, id: "sepMooncake", name: "九月月餅貓" },
+  { month: 10, id: "octPumpkin", name: "十月南瓜貓" },
+  { month: 11, id: "novAurora", name: "十一月極光貓" },
+  { month: 12, id: "decStarlight", name: "十二月星光王冠貓", tier: "special" }
+];
 export const MAX_PLAYER_LEVEL = 100;
 export const MAX_CHALLENGE_STEP_Y = 2.8;
 export const CHALLENGE_BASE = { x: -760, y: 1.2, z: -720 };
@@ -664,10 +694,12 @@ export function createAccount(code, overrides = {}) {
     rocketLevel: isHost ? ROCKET_MAX_LEVEL : 1,
     giftInbox: [],
     redeemedCodes: [],
+    claimedEventGifts: [],
     claimedLevelRewards: [],
     friends: [],
     friendRequests: [],
     gender,
+    blindBoxPity: { month: null, draws: 0 },
     survivalMode: isHost ? "host" : null,
     hunger: 100,
     thirst: 100,
@@ -687,6 +719,34 @@ export function pickRandomCatVariant(excludedVariant = null) {
     if (roll < 0) return entry.id;
   }
   return pool[0]?.id || CAT_VARIANT_RARITIES[0].id;
+}
+
+export function monthlyCatVariantForMonth(rawMonth = new Date().getMonth() + 1) {
+  const month = Math.min(12, Math.max(1, Math.floor(Number(rawMonth) || 1)));
+  return MONTHLY_CAT_VARIANTS.find((variant) => variant.month === month) || MONTHLY_CAT_VARIANTS[0];
+}
+
+export function monthlyCatVariantForDate(date = new Date()) {
+  const parsed = date instanceof Date ? date : new Date(date);
+  return monthlyCatVariantForMonth(parsed.getMonth() + 1);
+}
+
+export function blindBoxCostForDraw(drawNumber = 1) {
+  const safeDraw = Math.max(1, Math.floor(Number(drawNumber) || 1));
+  return Math.ceil(BLIND_BOX_BASE_DIAMOND_COST * (1.5 ** (safeDraw - 1)));
+}
+
+export function blindBoxStateForAccount(account, date = new Date()) {
+  const monthly = monthlyCatVariantForDate(date);
+  const pity = account?.blindBoxPity || {};
+  const draws = pity.month === monthly.month ? Math.max(0, Math.floor(Number(pity.draws || 0))) : 0;
+  return {
+    current: monthly,
+    pityDraws: draws,
+    nextDrawNumber: draws + 1,
+    nextCost: blindBoxCostForDraw(draws + 1),
+    pityDrawsRequired: BLIND_BOX_PITY_DRAWS
+  };
 }
 
 export function makeGuestAccount(overrides = {}) {
@@ -758,6 +818,100 @@ export function buyItem(account, itemId) {
   nextAccount.inventory.push(itemId);
   if (item.type === "rocket") nextAccount.rocketLevel ||= 1;
   return { ok: true, account: nextAccount, message: `買到 ${item.name}。` };
+}
+
+export function exchangeCoinsForDiamonds(account, rawDiamonds = 1) {
+  const diamonds = Math.floor(Number(rawDiamonds || 0));
+  if (!Number.isFinite(diamonds) || diamonds < 1) {
+    return { ok: false, message: "請輸入要換幾顆鑽石。" };
+  }
+  const cost = diamonds * COIN_TO_DIAMOND_RATE;
+  if (!account.isHost && Number(account.coins || 0) < cost) {
+    return { ok: false, message: `金幣不夠，${diamonds} 顆鑽石需要 ${cost} 金幣。` };
+  }
+  const nextAccount = structuredClone(account);
+  if (!nextAccount.isHost) {
+    nextAccount.coins -= cost;
+    nextAccount.diamonds = Number(nextAccount.diamonds || 0) + diamonds;
+  }
+  return { ok: true, account: nextAccount, message: `已用 ${cost} 金幣換到 ${diamonds} 顆鑽石。` };
+}
+
+export function drawMonthlyBlindBox(account, date = new Date(), random = Math.random) {
+  if (account.isHost) {
+    return { ok: false, message: "主機貓是專屬外觀，不會被盲盒改掉。" };
+  }
+  const state = blindBoxStateForAccount(account, date);
+  const monthly = state.current;
+  if (account.catVariant === monthly.id) {
+    return { ok: false, message: `你已經是本月限定 ${monthly.name} 了。` };
+  }
+  if (Number(account.diamonds || 0) < state.nextCost) {
+    return { ok: false, message: `鑽石不夠，這次抽需要 ${state.nextCost} 顆鑽石。` };
+  }
+  const nextAccount = structuredClone(account);
+  nextAccount.diamonds -= state.nextCost;
+  const win = state.nextDrawNumber >= BLIND_BOX_PITY_DRAWS || random() < BLIND_BOX_WIN_CHANCE;
+  nextAccount.blindBoxPity = win
+    ? { month: monthly.month, draws: 0 }
+    : { month: monthly.month, draws: state.nextDrawNumber };
+  if (!win) {
+    return {
+      ok: true,
+      account: nextAccount,
+      variant: monthly,
+      won: false,
+      message: `這次沒有抽到 ${monthly.name}，目前 ${state.nextDrawNumber}/${BLIND_BOX_PITY_DRAWS} 抽，第 10 抽必中。`
+    };
+  }
+  nextAccount.catVariant = monthly.id;
+  return {
+    ok: true,
+    account: nextAccount,
+    variant: monthly,
+    won: true,
+    message: `抽到本月限定 ${monthly.name}，毛色已永久保存。`
+  };
+}
+
+export function hostDayGiftState(account, date = new Date()) {
+  const parsed = date instanceof Date ? date : new Date(date);
+  const year = parsed.getFullYear();
+  const claimId = `${HOST_DAY_GIFT.id}-${year}`;
+  const available = parsed.getMonth() + 1 === HOST_DAY_GIFT.month && parsed.getDate() === HOST_DAY_GIFT.day;
+  const claimed = Array.isArray(account?.claimedEventGifts) && account.claimedEventGifts.includes(claimId);
+  return {
+    ...HOST_DAY_GIFT,
+    year,
+    claimId,
+    available,
+    claimed,
+    canClaim: available && !claimed
+  };
+}
+
+export function claimHostDayGift(account, date = new Date()) {
+  const state = hostDayGiftState(account, date);
+  if (!state.available) {
+    return { ok: false, message: `${HOST_DAY_GIFT.name} 要 12 月 27 日才能領。` };
+  }
+  if (state.claimed) {
+    return { ok: false, message: `${HOST_DAY_GIFT.name} 已經領過了。` };
+  }
+
+  const nextAccount = structuredClone(account);
+  nextAccount.claimedEventGifts = Array.isArray(nextAccount.claimedEventGifts) ? nextAccount.claimedEventGifts : [];
+  nextAccount.claimedEventGifts.push(state.claimId);
+  if (!nextAccount.isHost) {
+    nextAccount.coins = Number(nextAccount.coins || 0) + HOST_DAY_GIFT.coins;
+    nextAccount.diamonds = Number(nextAccount.diamonds || 0) + HOST_DAY_GIFT.diamonds;
+  }
+  return {
+    ok: true,
+    account: nextAccount,
+    gift: HOST_DAY_GIFT,
+    message: `領到${HOST_DAY_GIFT.name}：${HOST_DAY_GIFT.coins} 金幣、${HOST_DAY_GIFT.diamonds} 鑽石。`
+  };
 }
 
 export function useConsumable(account, itemId, rawText = "") {

@@ -6,6 +6,8 @@ import { existsSync, createReadStream } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  BLIND_BOX_BASE_DIAMOND_COST,
+  COIN_TO_DIAMOND_RATE,
   DEFAULT_COIN_CODES,
   DEFAULT_TITLE_ID,
   DEFAULT_TITLES,
@@ -38,16 +40,22 @@ import {
   challengeFinishForLevel,
   challengeLevelForAccounts,
   challengeStartForLevel,
+  claimHostDayGift,
   claimLevelReward,
   completeChallenge,
   createAccount,
   createHostDefaultRoomItems,
   damageAdultThirst,
   damageMonster,
+  drawMonthlyBlindBox,
   equipItem,
+  exchangeCoinsForDiamonds,
   getChallengePlatforms,
+  hostDayGiftState,
   isValidNewAccountCode,
   makeGuestAccount,
+  MONTHLY_CAT_VARIANTS,
+  blindBoxStateForAccount,
   normalizeGender,
   normalizeIslandCode,
   normalizeWeatherMode,
@@ -321,6 +329,14 @@ async function loadData() {
       account.hunger ??= 100;
       account.thirst ??= 100;
       account.prefers2D ??= false;
+      if (!account.blindBoxPity || typeof account.blindBoxPity !== "object") {
+        account.blindBoxPity = { month: null, draws: 0 };
+        changedAccounts = true;
+      }
+      if (!Array.isArray(account.claimedEventGifts)) {
+        account.claimedEventGifts = [];
+        changedAccounts = true;
+      }
       const normalizedGender = account.isHost ? "private" : normalizeGender(account.gender);
       if (account.gender !== normalizedGender) {
         account.gender = normalizedGender;
@@ -438,6 +454,15 @@ function handleMessage(socket, message) {
       break;
     case "buy":
       handleBuy(socket, session, message.itemId);
+      break;
+    case "drawBlindBox":
+      handleDrawBlindBox(socket, session);
+      break;
+    case "exchangeCoinsForDiamonds":
+      updateAccount(socket, session, exchangeCoinsForDiamonds(session.account, message.diamonds));
+      break;
+    case "claimHostDayGift":
+      updateAccount(socket, session, claimHostDayGift(session.account, new Date()));
       break;
     case "claimLevelReward":
       updateAccount(socket, session, claimLevelReward(session.account, message.level));
@@ -2050,6 +2075,11 @@ function handleBuy(socket, session, itemId) {
   if (result.ok) incrementAchievement(session, "itemsBought");
 }
 
+function handleDrawBlindBox(socket, session) {
+  const result = drawMonthlyBlindBox(session.account, new Date());
+  updateAccount(socket, session, result);
+}
+
 function handlePlaceRocket(socket, session) {
   if (!session.account.inventory.includes("rocket")) {
     send(socket, "notice", { message: "你還沒有火箭。" });
@@ -2407,6 +2437,8 @@ function accountPayload(account) {
   return {
     account,
     shopItems: SHOP_ITEMS,
+    blindBox: blindBoxPayload(account),
+    hostDayGift: hostDayGiftState(account, new Date()),
     islandCodes: ISLAND_CODES,
     hostIslandCode: HOST_ISLAND_CODE,
     freeIslandCodes: FREE_ISLAND_CODES,
@@ -2415,6 +2447,16 @@ function accountPayload(account) {
     friendProfiles: profilesForCodes(account.friends || []),
     friendRequestProfiles: profilesForCodes(account.friendRequests || []),
     coinCodes: account.isHost ? coinCodes : undefined
+  };
+}
+
+function blindBoxPayload(account) {
+  const state = blindBoxStateForAccount(account, new Date());
+  return {
+    ...state,
+    monthlyVariants: MONTHLY_CAT_VARIANTS,
+    baseDiamondCost: BLIND_BOX_BASE_DIAMOND_COST,
+    coinToDiamondRate: COIN_TO_DIAMOND_RATE
   };
 }
 

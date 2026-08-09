@@ -5,6 +5,8 @@ const state = {
   myId: null,
   account: null,
   shopItems: [],
+  blindBox: null,
+  hostDayGift: null,
   levelRewards: [],
   levelTasks: [],
   weather: "auto",
@@ -85,6 +87,7 @@ const els = {
   inviteFlyButton: document.querySelector("#inviteFlyButton"),
   bagButton: document.querySelector("#bagButton"),
   shopButton: document.querySelector("#shopButton"),
+  blindBoxButton: document.querySelector("#blindBoxButton"),
   onlinePlayersButton: document.querySelector("#onlinePlayersButton"),
   adminButton: document.querySelector("#adminButton"),
   chatLog: document.querySelector("#chatLog"),
@@ -285,6 +288,7 @@ function bindUi() {
   els.coinCodeButton.addEventListener("click", showCoinModal);
   els.levelRewardsButton.addEventListener("click", showLevelRewardsModal);
   els.shopButton.addEventListener("click", showShopModal);
+  els.blindBoxButton.addEventListener("click", showBlindBoxModal);
   els.bagButton.addEventListener("click", showBagModal);
   els.friendsButton.addEventListener("click", showFriendsModal);
   els.challengeButton.addEventListener("click", showChallengeModal);
@@ -428,6 +432,8 @@ function handleAuthed(message) {
 function updateAccount(message) {
   state.account = message.account;
   state.shopItems = message.shopItems || state.shopItems;
+  state.blindBox = message.blindBox || state.blindBox;
+  state.hostDayGift = message.hostDayGift || state.hostDayGift;
   state.levelRewards = message.levelRewards || state.levelRewards;
   state.levelTasks = message.levelTasks || state.levelTasks;
   state.weather = message.weather || state.weather;
@@ -468,6 +474,12 @@ function updateAccount(message) {
   }
   if (!els.modal.classList.contains("hidden") && els.modalTitle.textContent === "小貓火箭") {
     showRocketModal();
+  }
+  if (!els.modal.classList.contains("hidden") && els.modalTitle.textContent === "盲盒") {
+    showBlindBoxModal();
+  }
+  if (!els.modal.classList.contains("hidden") && els.modalTitle.textContent === "金幣代碼") {
+    showCoinModal();
   }
 }
 
@@ -1159,7 +1171,19 @@ function catPalette(variant) {
     lavender: { body: 0xb78cff, ear: 0xff8fcb, face: "#f7eeff" },
     storm: { body: 0x5f7892, ear: 0xbfe8ff, face: "#eef7ff" },
     blue: { body: 0x62b7ff, ear: 0x173d8f, face: "#eaf7ff" },
-    moonPinkEar: { body: 0xff9fd0, ear: 0xff8fcb, face: "#fff2fb" }
+    moonPinkEar: { body: 0xff9fd0, ear: 0xff8fcb, face: "#fff2fb" },
+    janSnow: { body: 0xeaf7ff, ear: 0x9ee7ff, face: "#ffffff" },
+    febHeart: { body: 0xff8fcb, ear: 0xff4f8f, face: "#fff2fb" },
+    marSakura: { body: 0xffc2d8, ear: 0xff9fc2, face: "#fff7fb" },
+    aprRain: { body: 0x9ee7ff, ear: 0x5b6dff, face: "#eefaff" },
+    mayEmerald: { body: 0x67d88a, ear: 0x0f8f62, face: "#f1fff4" },
+    junOcean: { body: 0x3aa7d6, ear: 0x173d8f, face: "#e7fbff" },
+    julSunset: { body: 0xff9b3d, ear: 0xff4f5f, face: "#fff0d8" },
+    augNebula: { body: 0x8d62ff, ear: 0xff8fcb, face: "#f5ecff" },
+    sepMooncake: { body: 0xd8a15d, ear: 0xffd166, face: "#fff0ca" },
+    octPumpkin: { body: 0xff7a1a, ear: 0x5a2d12, face: "#ffe0b8" },
+    novAurora: { body: 0x8fffd2, ear: 0xb78cff, face: "#effffb" },
+    decStarlight: { body: 0xfff1a8, ear: 0xff8fcb, face: "#fffbe4" }
   }[variant] || { body: 0xf6f2e9, face: "#ffffff" };
 }
 
@@ -3227,16 +3251,30 @@ function holdRepeatingButton(button, action, intervalMs = 120) {
 }
 
 function showCoinModal() {
+  const gift = state.hostDayGift || {};
+  const giftText = gift.claimed
+    ? `${gift.year || ""} 年已領取`
+    : gift.available
+      ? `今天可領：${gift.coins || 100} 金幣、${gift.diamonds || 50} 鑽石`
+      : "每年 12 月 27 日開放領取";
   openModal("金幣代碼", `
     <form id="coinForm" class="list">
       <input id="coinCodeInput" placeholder="輸入代碼" />
       <button class="primary-button" type="submit">兌換</button>
     </form>
+    <section class="panel event-gift-panel">
+      <div>
+        <strong>主機日禮包</strong>
+        <p class="muted-line">${escapeHtml(giftText)}</p>
+      </div>
+      <button id="hostDayGiftButton" ${gift.canClaim ? "" : "disabled"}>${gift.claimed ? "已領取" : "領取"}</button>
+    </section>
   `);
   document.querySelector("#coinForm").addEventListener("submit", (event) => {
     event.preventDefault();
     send("redeem", { code: document.querySelector("#coinCodeInput").value });
   });
+  document.querySelector("#hostDayGiftButton")?.addEventListener("click", () => send("claimHostDayGift"));
 }
 
 function showShopModal() {
@@ -3267,6 +3305,84 @@ function showShopModal() {
   };
   document.querySelector("#shopSearchInput").addEventListener("input", renderShopItems);
   renderShopItems();
+}
+
+const MONTHLY_DRAW_STYLES = [
+  ["雪花盒", "打開飄雪禮盒"],
+  ["愛心氣球", "戳破粉色氣球"],
+  ["櫻花輪盤", "轉動櫻花輪盤"],
+  ["雨滴瓶", "搖一搖雨滴瓶"],
+  ["翡翠藤蔓", "拉開綠色藤蔓"],
+  ["海洋泡泡", "點破海藍泡泡"],
+  ["夕陽飛鏢", "射中夕陽靶心"],
+  ["星雲卡牌", "翻開星雲卡片"],
+  ["月餅盒", "打開月光月餅盒"],
+  ["南瓜門", "敲開南瓜小門"],
+  ["極光簾", "拉開極光簾幕"],
+  ["星光王冠鐘", "轉動年末特級星光時鐘"]
+];
+
+function showBlindBoxModal() {
+  const blindBox = state.blindBox || {};
+  const current = blindBox.current || { month: new Date().getMonth() + 1, id: "janSnow", name: "一月雪光貓" };
+  const drawStyle = MONTHLY_DRAW_STYLES[current.month - 1] || MONTHLY_DRAW_STYLES[0];
+  const variants = blindBox.monthlyVariants || [];
+  const cost = Number(blindBox.nextCost || 10);
+  const nextDraw = Number(blindBox.nextDrawNumber || 1);
+  const pityRequired = Number(blindBox.pityDrawsRequired || 10);
+  const pityDraws = Number(blindBox.pityDraws || 0);
+  const rate = Number(blindBox.coinToDiamondRate || 10);
+  openModal("盲盒", `
+    <div class="blind-box-stage">
+      <section class="blind-box-hero">
+        <div class="blind-box-sky">
+          <span class="blind-balloon balloon-one"></span>
+          <span class="blind-balloon balloon-two"></span>
+          <span class="blind-star star-one"></span>
+          <span class="blind-star star-two"></span>
+          <span class="blind-wheel"></span>
+        </div>
+        <div>
+          <span class="eyebrow">${current.month} 月限定${current.tier === "special" ? " · 年末特級" : ""}</span>
+          <h3>${escapeHtml(current.name)}</h3>
+          <p>${escapeHtml(drawStyle[0])}：${escapeHtml(drawStyle[1])}。抽中後會直接變成永久毛色。</p>
+          <p class="muted-line">目前 ${pityDraws}/${pityRequired} 抽，第 ${pityRequired} 抽必中。下一抽是第 ${nextDraw} 抽。</p>
+        </div>
+        <button id="drawBlindBoxButton" class="primary-button" ${state.account?.isHost ? "disabled" : ""}>
+          ${state.account?.isHost ? "主機毛色專屬" : `抽一次 ${cost} 鑽石`}
+        </button>
+      </section>
+      <section class="panel">
+        <strong>金幣換鑽石</strong>
+        <p class="muted-line">${rate} 金幣 = 1 鑽石，只能單向兌換。</p>
+        <form id="diamondExchangeForm" class="row">
+          <input id="diamondExchangeInput" inputmode="numeric" maxlength="3" placeholder="要換幾顆鑽石" />
+          <button type="submit">兌換</button>
+        </form>
+      </section>
+      <section>
+        <h3>一到十二月限定</h3>
+        <div class="monthly-skin-grid">
+          ${variants.map((variant) => {
+            const style = MONTHLY_DRAW_STYLES[variant.month - 1] || MONTHLY_DRAW_STYLES[0];
+            const active = variant.id === current.id;
+            return `
+              <div class="monthly-skin-card ${active ? "active" : ""}">
+                <span>${variant.month} 月</span>
+                <strong>${escapeHtml(variant.name)}</strong>
+                <small>${escapeHtml(style[0])}${variant.tier === "special" ? " · 特級" : ""}</small>
+              </div>
+            `;
+          }).join("")}
+        </div>
+      </section>
+    </div>
+  `);
+  document.querySelector("#drawBlindBoxButton")?.addEventListener("click", () => send("drawBlindBox"));
+  document.querySelector("#diamondExchangeForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    send("exchangeCoinsForDiamonds", { diamonds: document.querySelector("#diamondExchangeInput").value });
+  });
 }
 
 function showLevelRewardsModal() {
